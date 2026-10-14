@@ -34,4 +34,4 @@ Aufnahmeordner verschoben (Voreinstellung `Dokumente\Oreja`). Protokoll: `%LOCAL
 
 ## Lizenzen
 
-Drittkomponenten (NAudio, libFLAC) siehe `THIRD-PARTY-NOTICES.md`.
+Oreja steht unter der MIT-Lizenz (siehe `LICENSE`). Drittkomponenten (NAudio, libFLAC) siehe `THIRD-PARTY-NOTICES.md`.
