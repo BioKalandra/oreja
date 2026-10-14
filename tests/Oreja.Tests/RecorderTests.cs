@@ -233,15 +233,55 @@ public sealed class RecorderTests : IDisposable
     }
 
     [Fact]
-    public void FailedSourceIsRemoved()
+    public void FailedSourceOfVanishedDeviceIsRemoved()
     {
         MicAndSpeaker();
         _recorder.Start();
+        _backend.RenderDevices.Remove("spk");
 
         _backend.Live("spk").Fail(new InvalidOperationException("Gerät getrennt"));
 
         Assert.True(_backend.Created.Single(s => s.DeviceId == "spk").Disposed);
         Assert.Equal(Degradation.NoSystemAudio, _recorder.Status.Degradation);
+    }
+
+    [Fact]
+    public void FailedMicrophoneThatIsStillDefaultIsReopened()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+
+        _backend.Live("mic").Fail(new InvalidOperationException("Format geändert"));
+
+        Assert.Equal(2, _backend.Created.Count(s => s.DeviceId == "mic"));
+        Assert.True(_backend.Live("mic").Started);
+        Assert.Equal(Degradation.None, _recorder.Status.Degradation);
+    }
+
+    [Fact]
+    public void FailedPlaybackDeviceThatIsStillActiveIsReopened()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+
+        _backend.Live("spk").Fail(new InvalidOperationException("Treiber-Reset"));
+
+        Assert.Equal(2, _backend.Created.Count(s => s.DeviceId == "spk"));
+        Assert.Equal(SourceKind.Loopback, _backend.Live("spk").Kind);
+        Assert.Equal(Degradation.None, _recorder.Status.Degradation);
+    }
+
+    [Fact]
+    public void ReopenIsNotRetriedWithinCooldown()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+
+        _backend.Live("mic").Fail(new InvalidOperationException("kaputt"));
+        _backend.Live("mic").Fail(new InvalidOperationException("immer noch kaputt"));
+
+        Assert.Equal(2, _backend.Created.Count(s => s.DeviceId == "mic"));
+        Assert.Equal(Degradation.NoMicrophone, _recorder.Status.Degradation);
     }
 
     [Fact]

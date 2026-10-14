@@ -10,6 +10,7 @@ namespace Oreja.Recording;
 public sealed class Recorder : IDisposable
 {
     public static readonly TimeSpan PumpInterval = TimeSpan.FromMilliseconds(50);
+    public static readonly TimeSpan ReopenCooldown = TimeSpan.FromSeconds(10);
 
     private const string WriteError = "Schreibfehler";
     private const string InternalError = "Interner Fehler – siehe Protokoll";
@@ -244,7 +245,29 @@ public sealed class Recorder : IDisposable
         if (!session.Sources.ContainsKey(source)) return;
         _log.Error($"Quelle ausgefallen: {source.Kind} {source.DeviceId}", error);
         RemoveSource(session, source);
+        TryReopen(session, source.DeviceId, source.Kind);
     });
+
+    /// <summary>
+    /// Öffnet ein ausgefallenes Gerät erneut, wenn Windows es weiterhin anbietet – etwa nach einem
+    /// Formatwechsel oder Treiber-Reset, für die kein Geräte-Event kommt. Höchstens einmal pro Gerät
+    /// innerhalb von <see cref="ReopenCooldown"/>, damit ein dauerhaft defektes Gerät keine Schleife auslöst.
+    /// </summary>
+    private void TryReopen(Session session, string deviceId, SourceKind kind)
+    {
+        var now = _clock.Elapsed;
+        if (session.LastReopen.TryGetValue(deviceId, out var last) && now - last < ReopenCooldown) return;
+        if (session.Sources.Keys.Any(s => s.Kind == kind && (kind == SourceKind.Microphone || s.DeviceId == deviceId))) return;
+
+        bool stillOffered = kind == SourceKind.Microphone
+            ? _backend.GetDefaultCaptureDeviceId() == deviceId
+            : _backend.GetActiveRenderDeviceIds().Contains(deviceId);
+        if (!stillOffered) return;
+
+        session.LastReopen[deviceId] = now;
+        _log.Info($"Quelle wird erneut geöffnet: {kind} {deviceId}");
+        TryAddSource(session, deviceId, kind);
+    }
 
     /// <summary>Wendet eine Änderung auf die laufende Sitzung an und meldet den neuen Zustand.</summary>
     private void Mutate(Action<Session> change)
@@ -352,6 +375,7 @@ public sealed class Recorder : IDisposable
         public AudioMixer Mixer { get; } = mixer;
         public MicSilenceDetector MicDetector { get; } = micDetector;
         public Dictionary<IAudioSource, SampleFifo> Sources { get; } = [];
+        public Dictionary<string, TimeSpan> LastReopen { get; } = [];
         public ManualResetEventSlim StopPump { get; } = new();
         public Thread? PumpThread { get; set; }
     }
