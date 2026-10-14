@@ -31,7 +31,8 @@ Oreja ist ein kleines Windows-Tool, das OBS als reines Audio-Aufnahmewerkzeug er
 | Thema | Entscheidung | Begründung |
 |---|---|---|
 | Sprache/Plattform | C# mit .NET 10 (LTS), WinForms nur für `NotifyIcon` | ausgereifte WASAPI-Unterstützung über NAudio, Tray-Icon ist Windows-Standard |
-| Audio-Bibliothek | NAudio 2.x | WASAPI-Capture, Loopback, Geräte-Enumeration und -Benachrichtigungen, Resampler |
+| Audio-Bibliothek | NAudio 3.1 (Paket `NAudio.Wasapi`) | WASAPI-Capture, Loopback, Geräte-Enumeration und -Benachrichtigungen, Resampler |
+| FLAC-Encoder | libFLAC 1.5.0 (offizielles Windows-Build von Xiph) per P/Invoke, DLL in die Exe eingebettet | Der in Windows eingebaute FLAC-Encoder unterstützt erst ab 44,1 kHz (geprüft am 2026-10-14); libFLAC erfüllt alle Kriterien (siehe „FLAC-Encoder“) |
 | Audioformat | FLAC, 16 kHz, Mono, 16 Bit | Whisper verarbeitet intern 16 kHz Mono, mehr bringt für die Erkennung nichts; ca. 50–70 MB pro Stunde |
 | Quellen | Windows-Standardmikrofon + Loopback **aller** aktiven Wiedergabegeräte, gemischt in eine Spur | Ton von Teams & Co. landet in der Aufnahme, auch wenn die App ein anderes Gerät als den Windows-Standard nutzt |
 | Ablage | Aufnahme lokal in einen Arbeitsordner, nach dem Stoppen Verschieben in den einstellbaren Zielordner | Sync-Clients sehen nur fertige Dateien; Aufnahme funktioniert auch, wenn der Zielordner gerade nicht erreichbar ist |
@@ -47,13 +48,13 @@ Eine einzelne Desktop-App ohne Hauptfenster. Jede Komponente hat eine klar umris
 |---|---|---|
 | `Program` | Einstiegspunkt, Single-Instance-Prüfung, startet die `TrayApp` | – |
 | `TrayApp` | Tray-Icon, Tooltip, Linksklick (mit Klickschutz), Kontextmenü, Ordnerauswahl, Reaktion auf Herunterfahren/Standby. Kennt nur Zustände, nichts über Audio. | `Recorder`, `Autostart`, `Settings`, `OutputPaths`, `RecordingMover` |
-| `Recorder` | Steuert genau eine Aufnahme (`Start()`, `Stop()`), baut die Pipeline auf und ab, meldet Zustandswechsel per Event | `AudioMixer`, `IFlacSink`, Audioquellen, `DeviceWatcher` |
+| `Recorder` | Steuert genau eine Aufnahme (`Start()`, `Stop()`), baut die Pipeline auf und ab, meldet Zustandswechsel per Event | `AudioMixer`, `IFlacSink`, `IAudioBackend` |
 | `AudioMixer` | Taktgeber und Mischer: holt im festen Takt Samples aus allen Quellen-FIFOs, füllt Lücken mit Stille, mischt, begrenzt und gibt 16-Bit-PCM an den Sink | `IClock`, `SampleFifo` |
 | `SampleFifo` | Jitter-Puffer pro Quelle im Zielformat (16 kHz Mono Float) | – |
 | `IAudioSource` | Eine Quelle (Mikrofon oder Loopback eines Geräts). Wandelt im Capture-Thread in das Zielformat um und schreibt in ihren `SampleFifo`. | NAudio |
-| `DeviceWatcher` | Meldet hinzugekommene/entfernte Wiedergabegeräte und Wechsel des Standardmikrofons | NAudio (`IMMNotificationClient`) |
-| `MicSilenceDetector` | Erkennt ein stummgeschaltetes oder gesperrtes Mikrofon (nur digitale Nullen) | – |
-| `IFlacSink` | Schreibt 16-Bit-PCM fortlaufend als FLAC-Datei | Implementierung siehe „FLAC-Encoder“ |
+| `IAudioBackend` (`WasapiBackend`) | Listet Geräte auf, erzeugt Quellen und meldet hinzugekommene/entfernte Wiedergabegeräte sowie Wechsel des Standardmikrofons (übernimmt die Rolle des „DeviceWatcher“) | NAudio (`MMDeviceNotificationClient`) |
+| `MicSilenceDetector` | Erkennt ein stummgeschaltetes oder gesperrtes Mikrofon (nur digitale Nullen oder gar keine Daten) | `IClock` |
+| `IFlacSink` (`LibFlacSink`) | Schreibt 16-Bit-PCM fortlaufend als FLAC-Datei | libFLAC |
 | `OutputPaths` | Arbeitsordner, Zielordner und Dateinamen | `Settings` |
 | `RecordingMover` | Verschiebt fertige Aufnahmen vom Arbeitsordner in den Zielordner | `OutputPaths` |
 | `Settings` | Liest und schreibt die Einstellungen unter `HKCU\Software\Oreja` (Zielordner, Erststart-Marker) | Registry-Schlüssel injizierbar |
@@ -65,14 +66,14 @@ Eine einzelne Desktop-App ohne Hauptfenster. Jede Komponente hat eine klar umris
 
 ```
 oreja/
-  Oreja.sln
+  Oreja.slnx
   src/Oreja/              net10.0-windows, WinForms
-    Program.cs
-    TrayApp.cs
-    Recording/            Recorder, AudioMixer, SampleFifo, IAudioSource + WASAPI-Quellen,
-                          DeviceWatcher, MicSilenceDetector, IFlacSink + Implementierung
+    Program.cs, TrayApp.cs, TrayIcons.cs, StatusText.cs, ClickGuard.cs
+    Recording/            Recorder, AudioMixer, SampleFifo, SampleConverter, IAudioSource,
+                          IAudioBackend + WasapiBackend/WasapiSource, MicSilenceDetector,
+                          IFlacSink + LibFlacSink
     Infrastructure/       Settings, OutputPaths, RecordingMover, Autostart, Log, IClock
-    Resources/            Icons (.ico)
+    native/               libFLAC.dll + Lizenztext
   tests/Oreja.Tests/      xUnit
   docs/
     manual-tests.md
@@ -83,7 +84,8 @@ oreja/
 - Capture-Threads (von NAudio/WASAPI): wandeln ins Zielformat um und schreiben in den FIFO ihrer Quelle.
 - Ein Taktgeber-Thread im `AudioMixer`: liest aus den FIFOs, mischt, schreibt in den `IFlacSink`.
 - UI-Thread (WinForms): Tray-Icon und Menü. Events des `Recorder` werden über den `SynchronizationContext` auf den UI-Thread gebracht.
-- Callbacks des `DeviceWatcher` kommen auf einem COM-Thread. Sie werden nur weitergereicht; der Umbau der Quellen geschieht außerhalb des Callbacks.
+- WASAPI-Objekte werden nur auf MTA-Threads (Thread-Pool) erzeugt und benutzt, nie auf dem UI-Thread.
+- Gerätebenachrichtigungen kommen auf einem COM-Thread. Sie werden nur weitergereicht; der Umbau der Quellen geschieht außerhalb des Callbacks.
 
 ## Audio-Pipeline
 
@@ -123,13 +125,20 @@ Loopback Wiedergabegerät n ► Umwandlung ──► FIFO ──┘
 
 **FLAC-Encoder**
 
-Erster Schritt der Implementierung ist ein kurzer Test des in Windows eingebauten FLAC-Encoders (Media Foundation) über NAudio. Er wird genommen, wenn er alle drei Kriterien erfüllt:
+Kriterien für den Encoder:
 
 1. Er erzeugt eine gültige FLAC-Datei mit 16 kHz, Mono, 16 Bit.
 2. Er schreibt fortlaufend auf die Platte: Die Datei wächst während der Aufnahme, und nach einem harten Prozessabbruch ist sie mit ffmpeg bis auf die letzten Sekunden lesbar.
 3. Er funktioniert in der self-contained Single-File-Exe.
 
-Sonst wird die Referenzbibliothek libFLAC (BSD-Lizenz) per P/Invoke eingebunden und die native DLL in die Single-File-Exe eingebettet. Beide Varianten liegen hinter `IFlacSink`; der Rest der App ist davon unabhängig.
+Ergebnis der Prüfung vom 2026-10-14:
+
+- **Windows-Encoder (Media Foundation):** erfüllt Kriterium 1 nicht. Er bietet nur Abtastraten ab 44,1 kHz an.
+- **libFLAC 1.5.0** (offizielles Windows-Build `flac-1.5.0-win.zip` von Xiph, BSD-Lizenz) per P/Invoke erfüllt alle drei:
+  - Roundtrip bitgenau, der Windows-Decoder liest die Datei.
+  - Die Datei wächst während der Aufnahme. Nach einem harten Abbruch fehlten nur rund 0,2 s, ffmpeg las den Rest.
+  - Die DLL läuft eingebettet in der self-contained Single-File-Exe.
+- **Umsetzung:** libFLAC schreibt über Callbacks in einen .NET-`FileStream`. Dadurch sind auch Pfade mit Umlauten unproblematisch, und nach jedem FLAC-Frame wird geflusht.
 
 **Stoppen**
 
@@ -146,7 +155,7 @@ Captures beenden → Taktgeber schreibt die letzten fälligen Samples → `IFlac
 | Aufnahme mit Einschränkung | roter Kreis mit gelbem Punkt unten rechts | „Oreja – Aufnahme seit 18:05 (ohne Mikrofon)“ |
 | Fehler | grauer Ring mit gelbem Warndreieck | „Oreja – Fehler: Kein Audiogerät verfügbar“ |
 
-Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebettete Ressourcen vor und sind auf heller und dunkler Taskleiste gut erkennbar. Der Tooltip wird beim Zustandswechsel gesetzt, ein laufender Timer ist nicht nötig. Bestehen mehrere Einschränkungen gleichzeitig, nennt der Tooltip alle, durch Komma getrennt.
+Die Icons werden beim Start in der aktuellen Tray-Icon-Größe gezeichnet (keine Bilddateien nötig, scharf bei jeder Skalierung) und sind auf heller und dunkler Taskleiste gut erkennbar. Der Tooltip wird beim Zustandswechsel gesetzt, ein laufender Timer ist nicht nötig. Bestehen mehrere Einschränkungen gleichzeitig, nennt der Tooltip alle, durch Komma getrennt.
 
 **Bedienung**
 
@@ -201,7 +210,7 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 | Beim Start: weder Mikrofon noch Wiedergabegerät nutzbar | Keine Aufnahme, Zustand „Fehler: Kein Audiogerät verfügbar“ |
 | Beim Start: kein Mikrofon | Aufnahme mit Einschränkung „ohne Mikrofon“ |
 | Beim Start: kein Wiedergabegerät | Aufnahme mit Einschränkung „ohne Systemaudio“ |
-| Mikrofon liefert länger als 3 s ausschließlich exakte Nullen | Einschränkung „Mikrofon stumm/gesperrt“; wird aufgehoben, sobald wieder Signal kommt |
+| Mikrofon liefert länger als 3 s ausschließlich exakte Nullen oder gar keine Daten | Einschränkung „Mikrofon stumm/gesperrt“; wird aufgehoben, sobald wieder Signal kommt |
 | Wiedergabegerät kommt hinzu | Wird in die laufende Aufnahme aufgenommen |
 | Wiedergabegerät verschwindet | Quelle entfällt still, Aufnahme läuft weiter (Einschränkung nur, wenn danach keines mehr übrig ist) |
 | Mikrofon verschwindet | Umschalten auf neues Windows-Standardmikrofon, bis dahin Stille. Gibt es keins mehr: Einschränkung „ohne Mikrofon“ |
@@ -255,9 +264,9 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 
 ## Reihenfolge der Umsetzung
 
-1. Test des Windows-FLAC-Encoders, Entscheidung für die `IFlacSink`-Implementierung
-2. Kernlogik mit Tests: `SampleFifo`, `AudioMixer`, `MicSilenceDetector`, `OutputPaths`, `RecordingMover`, `Settings`
-3. WASAPI-Quellen, `DeviceWatcher`, `Recorder`
+1. Projektgerüst und `LibFlacSink` (Encoder-Entscheidung ist gefallen, siehe „FLAC-Encoder“)
+2. Kernlogik mit Tests: `SampleFifo`, `AudioMixer`, `SampleConverter`, `MicSilenceDetector`, `OutputPaths`, `RecordingMover`, `Settings`
+3. `Recorder`, WASAPI-Quellen und `WasapiBackend`
 4. `TrayApp`, Icons, Ordnerauswahl, `Autostart`, `Log`, Single Instance
 5. Self-contained Single-File-Build, manuelle Checkliste durchgehen
 
@@ -269,6 +278,6 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 
 ## Risiken
 
-- **Windows-FLAC-Encoder:** Es ist unklar, ob er über NAudio fortlaufend schreibt. Der Test in Schritt 1 klärt das; libFLAC ist der Ausweg.
+- **Native DLL:** libFLAC wird als Binärdatei aus dem offiziellen Release ins Repo übernommen (Herkunft und Prüfsumme in `THIRD-PARTY-NOTICES.md`). Updates von libFLAC sind ein manueller Schritt.
 - **Loopback-Eigenheiten:** Bluetooth-Headsets wechseln beim Mikrofongebrauch das Profil und damit das Wiedergabegerät. Das ist durch die Aufnahme aller aktiven Wiedergabegeräte und die Gerätebenachrichtigungen abgedeckt, muss aber manuell geprüft werden (Checkliste Punkt 2 und 3).
 - **Virenscanner:** Eine unsignierte Exe, die das Mikrofon aufnimmt, kann Fehlalarme auslösen.
