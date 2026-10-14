@@ -8,6 +8,7 @@ public sealed class FakeSink : IFlacSink
     public bool Completed { get; private set; }
     public bool Disposed { get; private set; }
     public Exception? ThrowOnWrite { get; set; }
+    public Exception? ThrowOnDispose { get; set; }
 
     public void Write(ReadOnlySpan<short> samples)
     {
@@ -17,5 +18,9 @@ public sealed class FakeSink : IFlacSink
 
     public void Complete() => Completed = true;
 
-    public void Dispose() => Disposed = true;
+    public void Dispose()
+    {
+        Disposed = true;
+        if (ThrowOnDispose is not null) throw ThrowOnDispose;
+    }
 }

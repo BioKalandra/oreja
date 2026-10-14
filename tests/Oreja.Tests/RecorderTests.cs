@@ -287,6 +287,21 @@ public sealed class RecorderTests : IDisposable
     }
 
     [Fact]
+    public void FailureToCloseTheFileStillEndsTheRecording()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+        Sink.ThrowOnDispose = new IOException("Datenträger voll");
+
+        _recorder.Stop();
+
+        Assert.Equal(RecorderState.Error, _recorder.Status.State);
+        Assert.Equal("Schreibfehler", _recorder.Status.ErrorMessage);
+        Assert.Equal(_recorder.Status, _statuses.Last());
+        Assert.Single(_finished);
+    }
+
+    [Fact]
     public void SinkCreationFailureIsReportedAsWriteError()
     {
         MicAndSpeaker();

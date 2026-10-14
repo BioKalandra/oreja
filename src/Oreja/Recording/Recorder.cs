@@ -164,7 +164,17 @@ public sealed class Recorder : IDisposable
         }
         finally
         {
-            session.Sink.Dispose();
+            // Schlägt auch das Schließen fehl (z. B. Platte voll), muss die Sitzung trotzdem enden,
+            // sonst bliebe der Recorder dauerhaft im Zustand „Aufnahme“ hängen.
+            try
+            {
+                session.Sink.Dispose();
+            }
+            catch (Exception ex)
+            {
+                _log.Error("Aufnahmedatei konnte nicht geschlossen werden", ex);
+                errorMessage ??= ErrorMessageFor(ex);
+            }
             session.StopPump.Dispose();
         }
 
