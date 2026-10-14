@@ -13,13 +13,15 @@ Oreja ist ein kleines Windows-Tool, das OBS als reines Audio-Aufnahmewerkzeug er
 - Am Tray-Icon ist jederzeit erkennbar, ob gerade aufgenommen wird und ob die Aufnahme vollständig ist.
 - Whisper erkennt in der Aufnahme sowohl die eigene Stimme (Mikrofon) als auch die Gegenseite (Systemaudio), egal auf welches Wiedergabegerät eine App ihren Ton schickt.
 - Ein Absturz oder Stromausfall kostet höchstens die letzten Sekunden einer Aufnahme.
+- Der Aufnahmeordner ist frei wählbar. Liegt er in Google Drive für Desktop (oder einem anderen Sync-Ordner), landen dort nur vollständige Dateien.
 - Das Tool läuft auf einem beliebigen Windows-10/11-Rechner ohne Installation von Abhängigkeiten.
 
 ## Nicht-Ziele (Version 1)
 
 - Transkription innerhalb des Tools
 - Echounterdrückung (bei Lautsprecherbetrieb wird der Ton doppelt aufgenommen; Empfehlung: Headset)
-- Geräteauswahl, Einstellungsdialog, Hotkeys, Pause-Funktion
+- Geräteauswahl, Einstellungsdialog (einzige Einstellung ist der Aufnahmeordner), Hotkeys, Pause-Funktion
+- Eigene Cloud-Anbindung: Google Drive wird über Google Drive für Desktop und die Wahl eines Ordners darin genutzt
 - Getrennte Spuren für Mikrofon und Systemaudio
 - Native ARM64-Version (die x64-Exe läuft unter Windows on ARM per Emulation)
 - Paketierung für winget/Chocolatey, CI-Pipeline, Code-Signing (siehe Folgeschritte)
@@ -32,6 +34,7 @@ Oreja ist ein kleines Windows-Tool, das OBS als reines Audio-Aufnahmewerkzeug er
 | Audio-Bibliothek | NAudio 2.x | WASAPI-Capture, Loopback, Geräte-Enumeration und -Benachrichtigungen, Resampler |
 | Audioformat | FLAC, 16 kHz, Mono, 16 Bit | Whisper verarbeitet intern 16 kHz Mono, mehr bringt für die Erkennung nichts; ca. 50–70 MB pro Stunde |
 | Quellen | Windows-Standardmikrofon + Loopback **aller** aktiven Wiedergabegeräte, gemischt in eine Spur | Ton von Teams & Co. landet in der Aufnahme, auch wenn die App ein anderes Gerät als den Windows-Standard nutzt |
+| Ablage | Aufnahme lokal in einen Arbeitsordner, nach dem Stoppen Verschieben in den einstellbaren Zielordner | Sync-Clients sehen nur fertige Dateien; Aufnahme funktioniert auch, wenn der Zielordner gerade nicht erreichbar ist |
 | Auslieferung | Self-contained Single-File-Exe (`win-x64`), komprimiert | läuft ohne installierte .NET-Runtime; Grundlage für eine spätere winget-Portable-Paketierung |
 | Mindest-OS | Windows 10 22H2, Windows 11 | |
 | UI-Sprache | Deutsch | |
@@ -43,7 +46,7 @@ Eine einzelne Desktop-App ohne Hauptfenster. Jede Komponente hat eine klar umris
 | Komponente | Aufgabe | Abhängigkeiten |
 |---|---|---|
 | `Program` | Einstiegspunkt, Single-Instance-Prüfung, startet die `TrayApp` | – |
-| `TrayApp` | Tray-Icon, Tooltip, Linksklick (mit Klickschutz), Kontextmenü, Reaktion auf Herunterfahren/Standby. Kennt nur Zustände, nichts über Audio. | `Recorder`, `Autostart`, `OutputPaths` |
+| `TrayApp` | Tray-Icon, Tooltip, Linksklick (mit Klickschutz), Kontextmenü, Ordnerauswahl, Reaktion auf Herunterfahren/Standby. Kennt nur Zustände, nichts über Audio. | `Recorder`, `Autostart`, `Settings`, `OutputPaths`, `RecordingMover` |
 | `Recorder` | Steuert genau eine Aufnahme (`Start()`, `Stop()`), baut die Pipeline auf und ab, meldet Zustandswechsel per Event | `AudioMixer`, `IFlacSink`, Audioquellen, `DeviceWatcher` |
 | `AudioMixer` | Taktgeber und Mischer: holt im festen Takt Samples aus allen Quellen-FIFOs, füllt Lücken mit Stille, mischt, begrenzt und gibt 16-Bit-PCM an den Sink | `IClock`, `SampleFifo` |
 | `SampleFifo` | Jitter-Puffer pro Quelle im Zielformat (16 kHz Mono Float) | – |
@@ -51,7 +54,9 @@ Eine einzelne Desktop-App ohne Hauptfenster. Jede Komponente hat eine klar umris
 | `DeviceWatcher` | Meldet hinzugekommene/entfernte Wiedergabegeräte und Wechsel des Standardmikrofons | NAudio (`IMMNotificationClient`) |
 | `MicSilenceDetector` | Erkennt ein stummgeschaltetes oder gesperrtes Mikrofon (nur digitale Nullen) | – |
 | `IFlacSink` | Schreibt 16-Bit-PCM fortlaufend als FLAC-Datei | Implementierung siehe „FLAC-Encoder“ |
-| `OutputPaths` | Zielordner und Dateiname | – |
+| `OutputPaths` | Arbeitsordner, Zielordner und Dateinamen | `Settings` |
+| `RecordingMover` | Verschiebt fertige Aufnahmen vom Arbeitsordner in den Zielordner | `OutputPaths` |
+| `Settings` | Liest und schreibt die Einstellungen unter `HKCU\Software\Oreja` (Zielordner, Erststart-Marker) | Registry-Schlüssel injizierbar |
 | `Autostart` | Liest und schreibt den Autostart-Eintrag in der Registry | Registry-Schlüssel injizierbar |
 | `Log` | Einfaches Dateiprotokoll mit Rotation | – |
 | `IClock` | Zeitquelle, im Test simulierbar | – |
@@ -66,7 +71,7 @@ oreja/
     TrayApp.cs
     Recording/            Recorder, AudioMixer, SampleFifo, IAudioSource + WASAPI-Quellen,
                           DeviceWatcher, MicSilenceDetector, IFlacSink + Implementierung
-    Infrastructure/       OutputPaths, Autostart, Log, IClock
+    Infrastructure/       Settings, OutputPaths, RecordingMover, Autostart, Log, IClock
     Resources/            Icons (.ico)
   tests/Oreja.Tests/      xUnit
   docs/
@@ -128,7 +133,7 @@ Sonst wird die Referenzbibliothek libFLAC (BSD-Lizenz) per P/Invoke eingebunden 
 
 **Stoppen**
 
-Captures beenden → Taktgeber schreibt die letzten fälligen Samples → `IFlacSink` schließt die Datei ab (Kopfdaten mit Gesamtlänge aktualisieren) → Datei schließen. Das Stoppen muss innerhalb von 2 s abgeschlossen sein, damit es auch beim Herunterfahren zuverlässig klappt.
+Captures beenden → Taktgeber schreibt die letzten fälligen Samples → `IFlacSink` schließt die Datei ab (Kopfdaten mit Gesamtlänge aktualisieren) → Datei schließen. Das Stoppen muss innerhalb von 2 s abgeschlossen sein, damit es auch beim Herunterfahren zuverlässig klappt. Das anschließende Verschieben in den Zielordner (siehe „Ablage“) läuft im Hintergrund und zählt nicht zu diesen 2 s.
 
 ## Tray-Verhalten
 
@@ -149,15 +154,16 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 - **Rechtsklick-Menü:**
   - „Oreja 0.1.0“ (Versionsanzeige, nicht anklickbar)
   - „Aufnahme starten“ bzw. „Aufnahme stoppen“
-  - „Aufnahmeordner öffnen“
+  - „Aufnahmeordner öffnen“ (öffnet den Zielordner im Explorer)
+  - „Aufnahmeordner ändern…“ (Windows-Ordnerauswahldialog; einziges Fenster der App, erscheint nur auf Aufruf)
   - „Mit Windows starten“ (mit Häkchen)
   - „Beenden“
 - Keine Töne, keine Fenster, keine Benachrichtigungen, auch nicht bei Fehlern.
 
 **Sonderfälle**
 
-- **Beenden während einer Aufnahme:** Die Aufnahme wird sauber abgeschlossen, dann beendet sich die App.
-- **Herunterfahren/Abmelden während einer Aufnahme:** Die Aufnahme wird sauber abgeschlossen.
+- **Beenden während einer Aufnahme:** Die Aufnahme wird sauber abgeschlossen, dann beendet sich die App. Ein laufendes Verschieben in den Zielordner darf noch höchstens 10 s weiterlaufen. Danach wird es abgebrochen, und der nächste Start holt es nach. Durch den Umweg über `.tmp` entsteht dabei keine halbe Datei im Zielordner.
+- **Herunterfahren/Abmelden während einer Aufnahme:** Die Aufnahme wird im Arbeitsordner sauber abgeschlossen. Das Verschieben in den Zielordner holt der nächste Start nach.
 - **Standby/Ruhezustand während einer Aufnahme:** Die Aufnahme wird vorher sauber gestoppt. Nach dem Aufwachen ist die App im Zustand „Bereit“.
 - **Zweiter Start:** Läuft Oreja bereits (benannter Mutex pro Benutzersitzung), beendet sich der zweite Prozess ohne Meldung.
 
@@ -166,12 +172,20 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 - Eintrag `Oreja` unter `HKCU\Software\Microsoft\Windows\CurrentVersion\Run`, Wert ist der Pfad der laufenden Exe (`Environment.ProcessPath`) in Anführungszeichen.
 - Beim allerersten Start wird Autostart eingeschaltet. Der erste Start wird über den Wert `Initialized` unter `HKCU\Software\Oreja` erkannt.
 - Bei jedem Start: Existiert der Autostart-Eintrag, zeigt aber auf einen anderen Pfad (z. B. weil die Exe verschoben wurde), wird er auf den aktuellen Pfad aktualisiert.
-- Darüber hinaus gibt es keine Einstellungen und keine Einstellungsdatei.
 
-**Ausgabe**
+**Einstellungen**
 
-- Ordner: `<Dokumente>\Oreja\`, wird bei Bedarf angelegt.
-- Dateiname: `yyyy-MM-dd_HH-mm-ss.flac` (lokale Zeit des Aufnahmestarts). Existiert die Datei bereits, wird `_2`, `_3` usw. angehängt.
+- Einzige Einstellung ist der Zielordner, gespeichert als Wert `OutputFolder` unter `HKCU\Software\Oreja`. Es gibt keine Einstellungsdatei.
+- Voreinstellung (Wert fehlt): `<Dokumente>\Oreja\`.
+- Eine Änderung über „Aufnahmeordner ändern…“ gilt ab dem nächsten Verschieben, also auch für eine gerade laufende Aufnahme.
+
+**Ablage**
+
+- **Arbeitsordner:** `%LOCALAPPDATA%\Oreja\recording\`. Hier entsteht die Datei während der Aufnahme.
+- **Zielordner:** der eingestellte Ordner, wird bei Bedarf angelegt.
+- **Dateiname:** `yyyy-MM-dd_HH-mm-ss.flac` (lokale Zeit des Aufnahmestarts). Ist der Name im Arbeits- oder Zielordner bereits vergeben, wird `_2`, `_3` usw. angehängt. Ist er beim Verschieben im Zielordner inzwischen vergeben, wird dort erneut ein Suffix vergeben.
+- **Verschieben:** Nach jedem Stoppen und bei jedem Start der App werden alle Dateien im Arbeitsordner außer der gerade aufgenommenen in den Zielordner verschoben. Jede Datei wird dazu unter dem temporären Namen `<name>.flac.tmp` in den Zielordner kopiert, dort auf den endgültigen Namen umbenannt und erst danach lokal gelöscht. Sync-Clients wie Google Drive sehen dadurch nur vollständige Dateien.
+- **Zielordner nicht erreichbar** (z. B. Laufwerk `G:` noch nicht verbunden, USB-Stick abgezogen): Die Datei bleibt im Arbeitsordner, das wird protokolliert, und beim nächsten Stoppen oder Start wird es erneut versucht. Das Icon ändert sich nicht, da nichts verloren geht. Eine übrig gebliebene `.tmp`-Datei im Zielordner wird beim nächsten Versuch überschrieben.
 
 **Vom System vorgegeben (Hinweise, keine Funktionen)**
 
@@ -192,9 +206,10 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 | Wiedergabegerät verschwindet | Quelle entfällt still, Aufnahme läuft weiter (Einschränkung nur, wenn danach keines mehr übrig ist) |
 | Mikrofon verschwindet | Umschalten auf neues Windows-Standardmikrofon, bis dahin Stille. Gibt es keins mehr: Einschränkung „ohne Mikrofon“ |
 | Während der Aufnahme fallen alle Quellen weg | Aufnahme läuft mit Stille weiter (Geräte können zurückkommen), Einschränkung „ohne Mikrofon, ohne Systemaudio“ |
-| Schreibfehler (Platte voll, Ordner nicht beschreibbar) | Aufnahme stoppen, bisher Geschriebenes bleibt erhalten, Zustand „Fehler: Schreibfehler“ |
+| Schreibfehler im Arbeitsordner (Platte voll, Ordner nicht beschreibbar) | Aufnahme stoppen, bisher Geschriebenes bleibt erhalten, Zustand „Fehler: Schreibfehler“ |
+| Zielordner beim Verschieben nicht erreichbar | Datei bleibt im Arbeitsordner, erneuter Versuch beim nächsten Stoppen oder Start, nur Protokolleintrag |
 | Unerwartete Ausnahme in der Pipeline | Aufnahme sauber stoppen, Zustand „Fehler: Interner Fehler – siehe Protokoll“ |
-| Absturz/Stromausfall | Datei bis auf die letzten Sekunden erhalten; ggf. fehlt die Gesamtlänge im FLAC-Kopf, Whisper/ffmpeg lesen die Datei trotzdem |
+| Absturz/Stromausfall | Datei im Arbeitsordner bis auf die letzten Sekunden erhalten und beim nächsten Start in den Zielordner verschoben; ggf. fehlt die Gesamtlänge im FLAC-Kopf, Whisper/ffmpeg lesen die Datei trotzdem |
 
 - **Fehlerzustand verlassen:** Ein Linksklick startet einen neuen Aufnahmeversuch.
 - **Protokoll:** `%LOCALAPPDATA%\Oreja\oreja.log` mit Zeitstempel pro Zeile. Protokolliert werden Start/Stopp, Gerätewechsel, Pufferüberläufe, Einschränkungen und Fehler mit Ausnahmedetails. Ab 1 MB wird die Datei nach `oreja.log.1` rotiert (eine ältere Version wird aufbewahrt).
@@ -214,7 +229,14 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 - `MicSilenceDetector`: meldet nach 3 s exakter Nullen „stumm“, bei leisem Rauschen nicht, hebt den Zustand bei Signal wieder auf.
 - `Recorder`: Zustandsübergänge Bereit → Aufnahme → Einschränkung → Fehler mit Fake-Quellen und Fake-Sink.
 - Klickschutz: Klicks innerhalb 1 s nach dem Umschalten werden ignoriert.
-- `OutputPaths`: Dateinamenformat, Suffix `_2` bei Kollision.
+- `OutputPaths`: Dateinamenformat, Suffix `_2` bei Kollision im Arbeits- oder Zielordner.
+- `RecordingMover` (gegen temporäre Verzeichnisse):
+  - Fertige Dateien landen im Zielordner und verschwinden aus dem Arbeitsordner.
+  - Die gerade aufgenommene Datei wird nicht angefasst.
+  - Namenskollision im Zielordner führt zu Suffix statt Überschreiben.
+  - Nicht erreichbarer Zielordner: Datei bleibt im Arbeitsordner, kein Datenverlust.
+  - Übrig gebliebene `.tmp`-Datei im Zielordner wird beim nächsten Versuch überschrieben.
+- `Settings`: Voreinstellung bei fehlendem Wert, Lesen und Schreiben des Zielordners gegen einen Test-Registry-Schlüssel.
 - `IFlacSink`-Implementierung: Testton schreiben, mit dem Windows-FLAC-Decoder (Media Foundation) zurücklesen, Samples bitgenau vergleichen.
 - `Autostart`: Lesen, Schreiben, Pfadaktualisierung und Erststart-Erkennung gegen einen Test-Registry-Schlüssel.
 
@@ -225,16 +247,18 @@ Die Icons liegen als .ico mit den Größen 16, 20, 24, 32 und 48 px als eingebet
 3. Während der Aufnahme Headset abziehen und wieder anstecken: Aufnahme läuft durch, Icon zeigt zwischenzeitlich die Einschränkung.
 4. Mikrofonzugriff in den Windows-Datenschutzeinstellungen sperren: Icon zeigt „Mikrofon stumm/gesperrt“.
 5. Rechner während einer Aufnahme herunterfahren bzw. in den Standby schicken: Datei ist vollständig lesbar.
-6. Prozess während einer Aufnahme im Task-Manager beenden: Datei ist mit ffmpeg lesbar.
-7. Zweimal kurz hintereinander klicken: Aufnahme startet und bleibt an.
-8. Exe ein zweites Mal starten: Es erscheint kein zweites Icon.
+6. Prozess während einer Aufnahme im Task-Manager beenden: Nach dem nächsten Start liegt die Datei im Zielordner und ist mit ffmpeg lesbar.
+7. Zielordner in Google Drive für Desktop wählen, eine Aufnahme machen: Die Datei erscheint vollständig in Google Drive, ohne Zwischenstände.
+8. Zielordner auf einem USB-Stick wählen, Stick abziehen, Aufnahme machen, Stick wieder anstecken, Oreja neu starten: Die Datei wird nachträglich verschoben.
+9. Zweimal kurz hintereinander klicken: Aufnahme startet und bleibt an.
+10. Exe ein zweites Mal starten: Es erscheint kein zweites Icon.
 
 ## Reihenfolge der Umsetzung
 
 1. Test des Windows-FLAC-Encoders, Entscheidung für die `IFlacSink`-Implementierung
-2. Kernlogik mit Tests: `SampleFifo`, `AudioMixer`, `MicSilenceDetector`, `OutputPaths`
+2. Kernlogik mit Tests: `SampleFifo`, `AudioMixer`, `MicSilenceDetector`, `OutputPaths`, `RecordingMover`, `Settings`
 3. WASAPI-Quellen, `DeviceWatcher`, `Recorder`
-4. `TrayApp`, Icons, `Autostart`, `Log`, Single Instance
+4. `TrayApp`, Icons, Ordnerauswahl, `Autostart`, `Log`, Single Instance
 5. Self-contained Single-File-Build, manuelle Checkliste durchgehen
 
 ## Folgeschritte (nicht Teil von Version 1)
