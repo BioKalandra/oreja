@@ -126,18 +126,37 @@ public sealed class AudioMixerTests
     }
 
     [Fact]
-    public void LargeClockJumpIsEmittedInChunks()
+    public void GapsUpToTenSecondsAreFilledInChunks()
     {
         long total = 0;
         int largestChunk = 0;
         var mixer = new AudioMixer(_clock, samples => { total += samples.Length; largestChunk = Math.Max(largestChunk, samples.Length); });
         mixer.Start();
 
-        _clock.Advance(TimeSpan.FromMinutes(10));
+        _clock.Advance(TimeSpan.FromSeconds(10));
         mixer.Tick();
 
-        Assert.Equal(9_600_000, total);
+        Assert.Equal(160_000, total);
         Assert.True(largestChunk <= AudioMixer.SampleRate);
+    }
+
+    [Fact]
+    public void ClockJumpBeyondTenSecondsIsSkippedAndReported()
+    {
+        long total = 0;
+        var gaps = new List<TimeSpan>();
+        var mixer = new AudioMixer(_clock, samples => total += samples.Length, gaps.Add);
+        mixer.Start();
+
+        _clock.Advance(TimeSpan.FromHours(8)); // z. B. Modern Standby ohne Suspend-Ereignis
+        mixer.Tick();
+
+        Assert.Equal(0, total);
+        Assert.Equal(TimeSpan.FromHours(8), Assert.Single(gaps));
+
+        _clock.Advance(Step);
+        mixer.Tick();
+        Assert.Equal(800, total);
     }
 
     [Fact]

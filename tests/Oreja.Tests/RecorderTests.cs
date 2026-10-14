@@ -327,6 +327,20 @@ public sealed class RecorderTests : IDisposable
     }
 
     [Fact]
+    public void StopAfterLongStallSkipsTheGapInsteadOfWritingSilence()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+
+        _clock.Advance(TimeSpan.FromMinutes(1)); // Taktgeber stand still, z. B. Modern Standby
+        _recorder.Stop();
+
+        Assert.True(Sink.Samples.Count < AudioMixer.SampleRate, $"{Sink.Samples.Count} Samples Stille geschrieben");
+        Assert.Equal(RecorderStatus.Idle, _recorder.Status);
+        Assert.Contains("Zeitsprung", File.ReadAllText(Path.Combine(_root, "oreja.log")));
+    }
+
+    [Fact]
     public void FailureToCloseTheFileStillEndsTheRecording()
     {
         MicAndSpeaker();

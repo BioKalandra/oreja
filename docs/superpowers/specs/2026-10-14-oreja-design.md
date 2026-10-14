@@ -111,6 +111,7 @@ Loopback Wiedergabegerät n ► Umwandlung ──► FIFO ──┘
   - **Füllen:** Die Quelle liefert Stille, bis 200 ms im Puffer liegen. Dann wechselt sie zu „Abspielen“.
   - **Abspielen:** Die fälligen Samples werden aus dem Puffer gelesen. Läuft der Puffer dabei leer, wird der Rest mit Stille aufgefüllt und die Quelle wechselt zurück zu „Füllen“.
 - Liegt mehr als 1 s im Puffer (Taktdrift oder hängender Taktgeber), werden die ältesten Samples verworfen, bis wieder 200 ms im Puffer liegen. Das wird protokolliert.
+- Stand der Taktgeber länger als 10 s still (z. B. Modern Standby ohne Suspend-Ereignis), wird die Lücke nicht mit Stille aufgefüllt, sondern übersprungen und als Zeitsprung protokolliert. Sonst würde das Stoppen blockieren, bis Stunden an Stille kodiert sind, und die Transkription bekäme nur Leerlauf. Kürzere Lücken werden wie bisher mit Stille gefüllt.
 - Folge: Alle Quellen haben dieselbe Verzögerung von etwa 200 ms und bleiben damit zueinander synchron. Loopback-Quellen, die in Pausen gar keine Daten liefern, erzeugen Stille. Taktdrift zwischen Geräten (typisch < 0,2 s pro Stunde) wird abgefangen, ohne dass Audiodaten verloren gehen, außer im Überlauffall.
 
 **Mischen**

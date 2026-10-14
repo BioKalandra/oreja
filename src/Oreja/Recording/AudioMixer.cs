@@ -15,8 +15,17 @@ public sealed class AudioMixer
     public const int PrebufferSamples = SampleRate / 5; // 200 ms
     public const int MaxBufferedSamples = SampleRate;   // 1 s
 
+    /// <summary>
+    /// Größere Rückstände (10 s) bedeuten, dass der Taktgeber stillstand – etwa im Modern Standby
+    /// ohne Suspend-Ereignis. Dann wird die Lücke übersprungen statt stundenlang Stille zu kodieren,
+    /// was das Stoppen blockieren und die Transkription mit Leerlauf füllen würde.
+    /// </summary>
+    public const int MaxCatchUpSamples = SampleRate * 10;
+
     private readonly IClock _clock;
     private readonly PcmWriter _output;
+    private readonly Action<TimeSpan>? _onDiscontinuity;
+    private long _skipped;
     private readonly object _gate = new();
     private readonly List<SampleFifo> _sources = [];
     private readonly float[] _mix = new float[SampleRate];
@@ -26,10 +35,12 @@ public sealed class AudioMixer
     private bool _started;
     private int _removedOverflows;
 
-    public AudioMixer(IClock clock, PcmWriter output)
+    /// <param name="onDiscontinuity">Wird mit der Länge einer übersprungenen Lücke aufgerufen (siehe <see cref="MaxCatchUpSamples"/>).</param>
+    public AudioMixer(IClock clock, PcmWriter output, Action<TimeSpan>? onDiscontinuity = null)
     {
         _clock = clock;
         _output = output;
+        _onDiscontinuity = onDiscontinuity;
     }
 
     public long SamplesWritten { get { lock (_gate) return _written; } }
@@ -60,18 +71,28 @@ public sealed class AudioMixer
         {
             _start = _clock.Elapsed;
             _written = 0;
+            _skipped = 0;
             _started = true;
         }
     }
 
-    /// <summary>Gibt alle laut Uhr fälligen Samples aus (in Blöcken von höchstens 1 s).</summary>
+    /// <summary>
+    /// Gibt alle laut Uhr fälligen Samples aus (in Blöcken von höchstens 1 s). Rückstände über
+    /// <see cref="MaxCatchUpSamples"/> werden als Zeitsprung übersprungen und gemeldet.
+    /// </summary>
     public void Tick()
     {
         lock (_gate)
         {
             if (!_started) throw new InvalidOperationException("Start() wurde nicht aufgerufen");
-            long due = (_clock.Elapsed - _start).Ticks * SampleRate / TimeSpan.TicksPerSecond;
+            long due = (_clock.Elapsed - _start).Ticks * SampleRate / TimeSpan.TicksPerSecond - _skipped;
             long pending = due - _written;
+            if (pending > MaxCatchUpSamples)
+            {
+                _skipped += pending;
+                _onDiscontinuity?.Invoke(TimeSpan.FromTicks(pending * TimeSpan.TicksPerSecond / SampleRate));
+                return;
+            }
             while (pending > 0)
             {
                 var mix = _mix.AsSpan(0, (int)Math.Min(pending, _mix.Length));

@@ -99,7 +99,9 @@ public sealed class Recorder : IDisposable
             return new RecorderStatus(RecorderState.Error, ErrorMessage: WriteError);
         }
 
-        var session = new Session(path, sink, new AudioMixer(_clock, sink.Write),
+        var mixer = new AudioMixer(_clock, sink.Write,
+            gap => _log.Info($"Zeitsprung erkannt: Taktgeber stand {gap:c} still, Lücke wird übersprungen"));
+        var session = new Session(path, sink, mixer,
             new MicSilenceDetector(_clock, MicSilenceDetector.DefaultThreshold));
 
         string? micId = null;
