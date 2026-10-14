@@ -1,0 +1,26 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
+    <RootNamespace>Oreja</RootNamespace>
+    <Product>Oreja</Product>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="NAudio.Wasapi" Version="3.1.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Link legt die DLL direkt neben die Exe, wo die Laufzeit sie sucht (nicht in native\) -->
+    <None Update="native\libFLAC.dll" Link="libFLAC.dll" CopyToOutputDirectory="PreserveNewest" />
+    <InternalsVisibleTo Include="Oreja.Tests" />
+  </ItemGroup>
+
+</Project>
