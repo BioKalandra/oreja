@@ -20,8 +20,12 @@ Aufnahmeordner verschoben (Voreinstellung `Dokumente\Oreja`). Protokoll: `%LOCAL
 
 ## Hinweise
 
+- **Speicherort:** Die Exe auf die lokale Platte legen, z. B. nach `%LOCALAPPDATA%\Programs\Oreja\`,
+  nicht auf OneDrive, Google Drive, ein Netzlaufwerk oder einen USB-Stick.
 - **Windows 11:** Das Icon einmalig unter *Einstellungen → Personalisierung → Taskleiste →
-  Andere Symbole der Taskleiste* sichtbar machen.
+  Andere Symbole der Taskleiste* sichtbar machen. Windows merkt sich das pro Exe-Pfad
+  (`HKCU\Control Panel\NotifyIconSettings`) – nach dem Verschieben der Exe das Icon dort neu
+  einblenden.
 - **Headset statt Lautsprecher** verwenden, sonst nimmt das Mikrofon den Ton ein zweites Mal auf.
 - **Headset-Mikro als Windows-Standard** einstellen, als „Standardgerät“ und als
   „Standardkommunikationsgerät“. Systemaudio wird von allen Wiedergabegeräten aufgenommen.
@@ -35,6 +39,16 @@ Aufnahmeordner verschoben (Voreinstellung `Dokumente\Oreja`). Protokoll: `%LOCAL
   sofort und bleibt erhalten. Das Protokoll bleibt immer deutsch.
 - **Transkription:** Bei langen Pausen hilft der VAD-Filter, z. B. `vad_filter=True` in faster-whisper.
 - Gespräche mit anderen nur mit deren Einverständnis aufnehmen (§ 201 StGB).
+
+## Fehlersuche
+
+- **Kein Icon zu sehen?** Oreja einfach noch einmal starten. Läuft es schon, meldet der zweite Start
+  das und bietet an, die Taskleisten-Einstellungen zu öffnen. Hat die laufende Oreja ihr Icon nach
+  5 Sekunden noch nicht angelegt, hängt vermutlich ihr Start; dann bietet die Meldung das Protokoll an.
+- **Protokoll** (`%LOCALAPPDATA%\Oreja\oreja.log`): „Audio-Initialisierung …“, „Audio-Initialisierung
+  fertig (… ms)“ und „Tray-Icon bereit“ zeigen, wie weit der Start gekommen ist. Folgt auf die letzte
+  Zeile „Audio-Initialisierung …“ kein „fertig“ (höchstens „dauert ungewöhnlich lange“), hängt der
+  Start beim Windows-Audiodienst.
 
 ## Entwickeln
 
