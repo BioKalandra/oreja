@@ -12,10 +12,6 @@ public sealed class Recorder : IDisposable
     public static readonly TimeSpan PumpInterval = TimeSpan.FromMilliseconds(50);
     public static readonly TimeSpan ReopenCooldown = TimeSpan.FromSeconds(10);
 
-    private const string WriteError = "Schreibfehler";
-    private const string InternalError = "Interner Fehler – siehe Protokoll";
-    private const string NoDeviceError = "Kein Audiogerät verfügbar";
-
     private readonly IAudioBackend _backend;
     private readonly IClock _clock;
     private readonly Func<int> _getSampleRate;
@@ -72,7 +68,7 @@ public sealed class Recorder : IDisposable
     {
         Session? session;
         lock (_gate) session = _session;
-        if (session is not null) StopSession(session, errorMessage: null);
+        if (session is not null) StopSession(session, error: null);
     }
 
     public void Dispose() => Stop();
@@ -106,7 +102,7 @@ public sealed class Recorder : IDisposable
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
             _log.Error("Aufnahmedatei konnte nicht angelegt werden", ex);
-            return new RecorderStatus(RecorderState.Error, ErrorMessage: WriteError);
+            return new RecorderStatus(RecorderState.Error, Error: RecorderError.WriteFailed);
         }
 
         var mixer = new AudioMixer(_clock, sampleRate, sink.Write,
@@ -133,8 +129,8 @@ public sealed class Recorder : IDisposable
         {
             sink.Dispose();
             TryDelete(path);
-            _log.Error(NoDeviceError);
-            return new RecorderStatus(RecorderState.Error, ErrorMessage: NoDeviceError);
+            _log.Error("Kein Audiogerät verfügbar");
+            return new RecorderStatus(RecorderState.Error, Error: RecorderError.NoDevice);
         }
 
         session.Mixer.Start();
@@ -150,7 +146,7 @@ public sealed class Recorder : IDisposable
         return new RecorderStatus(RecorderState.Recording, ComputeDegradation(session), startedAt);
     }
 
-    private void StopSession(Session session, string? errorMessage)
+    private void StopSession(Session session, RecorderError? error)
     {
         lock (_gate)
         {
@@ -173,7 +169,7 @@ public sealed class Recorder : IDisposable
         catch (Exception ex)
         {
             _log.Error("Aufnahme konnte nicht sauber abgeschlossen werden", ex);
-            errorMessage ??= ErrorMessageFor(ex);
+            error ??= ErrorFor(ex);
         }
         finally
         {
@@ -186,12 +182,12 @@ public sealed class Recorder : IDisposable
             catch (Exception ex)
             {
                 _log.Error("Aufnahmedatei konnte nicht geschlossen werden", ex);
-                errorMessage ??= ErrorMessageFor(ex);
+                error ??= ErrorFor(ex);
             }
             session.StopPump.Dispose();
         }
 
-        var status = errorMessage is null ? RecorderStatus.Idle : new RecorderStatus(RecorderState.Error, ErrorMessage: errorMessage);
+        var status = error is null ? RecorderStatus.Idle : new RecorderStatus(RecorderState.Error, Error: error);
         lock (_gate)
         {
             if (_session is null) _status = status; // nur, wenn inzwischen keine neue Aufnahme läuft
@@ -199,7 +195,7 @@ public sealed class Recorder : IDisposable
         }
 
         _log.Info($"Aufnahme beendet: {session.Path} ({session.Mixer.SampleRate} Hz), Pufferüberläufe: {session.Mixer.OverflowCount}" +
-                  (errorMessage is null ? "" : $" ({errorMessage})"));
+                  (error is null ? "" : $" ({LogText(error.Value)})"));
         StatusChanged?.Invoke(status);
         RecordingFinished?.Invoke(session.Path);
     }
@@ -221,8 +217,8 @@ public sealed class Recorder : IDisposable
         catch (Exception ex)
         {
             _log.Error("Fehler in der Aufnahme-Pipeline", ex);
-            string message = ErrorMessageFor(ex);
-            _dispatch(() => StopSession(session, message));
+            var error = ErrorFor(ex);
+            _dispatch(() => StopSession(session, error));
             return false;
         }
 
@@ -353,8 +349,16 @@ public sealed class Recorder : IDisposable
         return degradation;
     }
 
-    private static string ErrorMessageFor(Exception ex) =>
-        ex is IOException or UnauthorizedAccessException ? WriteError : InternalError;
+    private static RecorderError ErrorFor(Exception ex) =>
+        ex is IOException or UnauthorizedAccessException ? RecorderError.WriteFailed : RecorderError.Internal;
+
+    /// <summary>Fehlergrund fürs Protokoll; das Protokoll bleibt unabhängig von der Oberflächensprache deutsch.</summary>
+    private static string LogText(RecorderError error) => error switch
+    {
+        RecorderError.WriteFailed => "Schreibfehler",
+        RecorderError.NoDevice => "Kein Audiogerät verfügbar",
+        _ => "Interner Fehler – siehe Protokoll",
+    };
 
     private void DisposeQuietly(IAudioSource source)
     {

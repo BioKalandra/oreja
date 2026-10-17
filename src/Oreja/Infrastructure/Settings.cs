@@ -9,6 +9,12 @@ public sealed class Settings
     private const string OutputFolderValue = "OutputFolder";
     private const string InitializedValue = "Initialized";
     private const string SampleRateValue = "SampleRate";
+    private const string LanguageValue = "Language";
+
+    /// <summary>Werte von <see cref="Language"/>: automatisch nach der Windows-Sprache, Deutsch, Englisch.</summary>
+    public const string LanguageAutomatic = "";
+    public const string LanguageGerman = "de";
+    public const string LanguageEnglish = "en";
 
     private readonly RegistryKey _key;
 
@@ -35,7 +41,22 @@ public sealed class Settings
         }
     }
 
+    /// <summary>Sprache der Oberfläche; ein fehlender oder ungültiger Wert ergibt „automatisch“.</summary>
+    public string Language
+    {
+        get => _key.GetValue(LanguageValue) is string language && IsSupportedLanguage(language) ? language : LanguageAutomatic;
+        set
+        {
+            if (!IsSupportedLanguage(value))
+                throw new ArgumentOutOfRangeException(nameof(value), value, "Nicht unterstützte Sprache");
+            _key.SetValue(LanguageValue, value, RegistryValueKind.String);
+        }
+    }
+
     public bool IsInitialized => _key.GetValue(InitializedValue) is int value && value == 1;
 
     public void MarkInitialized() => _key.SetValue(InitializedValue, 1, RegistryValueKind.DWord);
+
+    private static bool IsSupportedLanguage(string? language) =>
+        language is LanguageAutomatic or LanguageGerman or LanguageEnglish;
 }

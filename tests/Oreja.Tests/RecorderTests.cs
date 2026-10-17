@@ -91,7 +91,7 @@ public sealed class RecorderTests : IDisposable
         _recorder.Start();
 
         Assert.Equal(RecorderState.Error, _recorder.Status.State);
-        Assert.Equal("Kein Audiogerät verfügbar", _recorder.Status.ErrorMessage);
+        Assert.Equal(RecorderError.NoDevice, _recorder.Status.Error);
         Assert.True(Sink.Disposed);
         Assert.Empty(Directory.GetFiles(Path.Combine(_root, "work"), "*.flac"));
     }
@@ -337,10 +337,11 @@ public sealed class RecorderTests : IDisposable
         Advance(50);
 
         Assert.Equal(RecorderState.Error, _recorder.Status.State);
-        Assert.Equal("Schreibfehler", _recorder.Status.ErrorMessage);
+        Assert.Equal(RecorderError.WriteFailed, _recorder.Status.Error);
         Assert.All(_backend.Created, s => Assert.True(s.Disposed));
         Assert.True(Sink.Disposed);
         Assert.Single(_finished);
+        Assert.Single(ReadLog().Split('\n'), l => l.Contains("Aufnahme beendet") && l.Contains("(Schreibfehler)"));
     }
 
     [Theory]
@@ -370,9 +371,33 @@ public sealed class RecorderTests : IDisposable
         _recorder.Stop();
 
         Assert.Equal(RecorderState.Error, _recorder.Status.State);
-        Assert.Equal("Schreibfehler", _recorder.Status.ErrorMessage);
+        Assert.Equal(RecorderError.WriteFailed, _recorder.Status.Error);
         Assert.Equal(_recorder.Status, _statuses.Last());
         Assert.Single(_finished);
+    }
+
+    [Fact]
+    public void UnexpectedPipelineErrorIsReportedAsInternalError()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+        Sink.ThrowOnWrite = new InvalidOperationException("unerwartet");
+
+        Advance(50);
+
+        Assert.Equal(RecorderState.Error, _recorder.Status.State);
+        Assert.Equal(RecorderError.Internal, _recorder.Status.Error);
+        Assert.Single(ReadLog().Split('\n'), l => l.Contains("Aufnahme beendet") && l.Contains("(Interner Fehler – siehe Protokoll)"));
+    }
+
+    [Fact]
+    public void NonErrorStatusesCarryNoErrorCode()
+    {
+        MicAndSpeaker();
+        _recorder.Start();
+
+        Assert.Null(_recorder.Status.Error);
+        Assert.Null(RecorderStatus.Idle.Error);
     }
 
     [Fact]
@@ -384,7 +409,7 @@ public sealed class RecorderTests : IDisposable
         _recorder.Start();
 
         Assert.Equal(RecorderState.Error, _recorder.Status.State);
-        Assert.Equal("Schreibfehler", _recorder.Status.ErrorMessage);
+        Assert.Equal(RecorderError.WriteFailed, _recorder.Status.Error);
         Assert.Empty(_backend.Created);
     }
 

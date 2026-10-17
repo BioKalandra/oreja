@@ -102,4 +102,68 @@ public sealed class SettingsTests : IDisposable
         Assert.Equal(new[] { 16000, 44100, 48000 }, AudioFormat.SupportedSampleRates.OrderBy(r => r));
         Assert.Contains(AudioFormat.DefaultSampleRate, AudioFormat.SupportedSampleRates);
     }
+
+    [Fact]
+    public void LanguageDefaultsToAutomatic()
+    {
+        Assert.Equal("", new Settings(_registry.Key).Language);
+    }
+
+    [Theory]
+    [InlineData("")]
+    [InlineData("de")]
+    [InlineData("en")]
+    public void LanguageIsPersisted(string language)
+    {
+        new Settings(_registry.Key).Language = language;
+
+        Assert.Equal(language, new Settings(_registry.Key).Language);
+    }
+
+    [Fact]
+    public void LanguageIsStoredAsString()
+    {
+        new Settings(_registry.Key).Language = "en";
+
+        Assert.Equal("en", _registry.Key.GetValue("Language"));
+        Assert.Equal(RegistryValueKind.String, _registry.Key.GetValueKind("Language"));
+    }
+
+    [Theory]
+    [InlineData("fr")]
+    [InlineData("EN")]
+    [InlineData("De")]
+    [InlineData("auto")]
+    [InlineData(" en")]
+    [InlineData("deutsch")]
+    public void InvalidStoredLanguageFallsBackToAutomatic(string stored)
+    {
+        _registry.Key.SetValue("Language", stored, RegistryValueKind.String);
+
+        Assert.Equal("", new Settings(_registry.Key).Language);
+    }
+
+    [Fact]
+    public void LanguageOfWrongRegistryTypeFallsBackToAutomatic()
+    {
+        _registry.Key.SetValue("Language", 1, RegistryValueKind.DWord);
+
+        Assert.Equal("", new Settings(_registry.Key).Language);
+    }
+
+    [Theory]
+    [InlineData("fr")]
+    [InlineData("EN")]
+    [InlineData("auto")]
+    [InlineData(null)]
+    public void InvalidLanguageIsRejectedAndNotStored(string? language)
+    {
+        var settings = new Settings(_registry.Key);
+        settings.Language = "de";
+
+        Assert.Throws<ArgumentOutOfRangeException>(() => settings.Language = language!);
+
+        Assert.Equal("de", new Settings(_registry.Key).Language);
+        Assert.Equal("de", _registry.Key.GetValue("Language"));
+    }
 }

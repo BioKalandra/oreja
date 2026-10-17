@@ -21,3 +21,9 @@ Nach jedem Test im Zweifel `%LOCALAPPDATA%\Oreja\oreja.log` ansehen.
 | 14 | „48 kHz (Hörclips)“ wählen, 1 Minute aufnehmen, `ffprobe datei.flac` | `48000 Hz, mono`; Protokoll: „Aufnahme gestartet: … (n Quellen, 48000 Hz)“ und „Aufnahme beendet: … (48000 Hz) …“ | ☐ |
 | 15 | Dasselbe mit „44,1 kHz“ und „16 kHz (Spracherkennung)“ | Datei hat 44100 bzw. 16000 Hz, Protokoll nennt die Rate; die 48-kHz-Datei ist deutlich größer als die 16-kHz-Datei | ☐ |
 | 16 | Während einer Aufnahme Rechtsklick → „Abtastrate“ | Eintrag ausgegraut; nach dem Stoppen wieder wählbar | ☐ |
+| 17 | Bei deutscher Windows-Sprache und Erststart Rechtsklick → „Sprache“ | Menü deutsch, Häkchen bei „Automatisch (Windows)“ | ☐ |
+| 18 | „Sprache“ → „English“ wählen, Menü erneut öffnen, Maus aufs Icon halten | Alle Einträge sofort englisch („Start recording“, „Sample rate“ mit „44.1 kHz“, „Language“, „Exit“ …), Tooltip „Oreja – ready“, Häkchen bei „English“; Protokoll: „Sprache geändert: en“ | ☐ |
+| 19 | Aufnahme starten, Tooltip ansehen, „Language“ → „Deutsch“ wählen, Tooltip erneut ansehen, Menü erneut öffnen, Aufnahme stoppen | Tooltip wechselt von „Oreja – recording since …“ zu „Oreja – Aufnahme seit …“ und der Menüeintrag von „Stop recording“ zu „Aufnahme stoppen“, beides sofort ohne Neustart | ☐ |
+| 20 | „English“ wählen, „Change recordings folder…“ öffnen | Dialogtitel „Choose recordings folder“ | ☐ |
+| 21 | Oreja beenden und neu starten | Menü weiterhin englisch, Häkchen bei „English“ | ☐ |
+| 22 | „Language“ → „Automatic (Windows)“ wählen | Menü und Tooltip sofort wieder deutsch, Häkchen bei „Automatisch (Windows)“; Protokoll: „Sprache geändert: automatisch“ | ☐ |

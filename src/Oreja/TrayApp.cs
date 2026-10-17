@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Globalization;
 using Microsoft.Win32;
 using Oreja.Infrastructure;
 using Oreja.Recording;
@@ -21,11 +22,17 @@ public sealed class TrayApp : ApplicationContext
     private readonly TrayIcons _icons;
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _toggleItem;
+    private readonly ToolStripMenuItem _openFolderItem;
+    private readonly ToolStripMenuItem _changeFolderItem;
     private readonly ToolStripMenuItem _autostartItem;
     private readonly ToolStripMenuItem _sampleRateItem;
+    private readonly ToolStripMenuItem _languageItem;
+    private readonly ToolStripMenuItem _exitItem;
     private readonly ClickGuard _clickGuard = new(TimeSpan.FromSeconds(1));
     private readonly object _movesGate = new();
     private Task _moves = Task.CompletedTask;
+    private UiText _text;
+    private RecorderStatus _shownStatus = RecorderStatus.Idle;
     private bool _busy;
     private bool _exiting;
 
@@ -39,29 +46,40 @@ public sealed class TrayApp : ApplicationContext
         _log = log;
         _ui = SynchronizationContext.Current ?? throw new InvalidOperationException("UI-SynchronizationContext fehlt");
         _icons = new TrayIcons(SystemInformation.SmallIconSize.Width);
+        _text = UiText.Resolve(_settings.Language, CultureInfo.CurrentUICulture);
 
+        // Texte setzt ApplyTexts, damit ein Sprachwechsel sie ohne Neustart austauschen kann.
         string version = typeof(TrayApp).Assembly.GetName().Version!.ToString(3);
-        _toggleItem = new ToolStripMenuItem("Aufnahme starten", null, (_, _) => Toggle());
-        _autostartItem = new ToolStripMenuItem("Mit Windows starten", null, (_, _) => ToggleAutostart())
+        _toggleItem = new ToolStripMenuItem(null, null, (_, _) => Toggle());
+        _openFolderItem = new ToolStripMenuItem(null, null, (_, _) => OpenOutputFolder());
+        _changeFolderItem = new ToolStripMenuItem(null, null, (_, _) => ChangeOutputFolder());
+        _sampleRateItem = new ToolStripMenuItem();
+        foreach (int rate in AudioFormat.SupportedSampleRates)
+            _sampleRateItem.DropDownItems.Add(new ToolStripMenuItem(null, null, (_, _) => ChangeSampleRate(rate)) { Tag = rate });
+        _languageItem = new ToolStripMenuItem();
+        foreach (string language in (string[])[Settings.LanguageAutomatic, Settings.LanguageGerman, Settings.LanguageEnglish])
+            _languageItem.DropDownItems.Add(new ToolStripMenuItem(null, null, (_, _) => ChangeLanguage(language)) { Tag = language });
+        _autostartItem = new ToolStripMenuItem(null, null, (_, _) => ToggleAutostart())
         {
             Checked = _autostart.IsEnabled,
         };
-        _sampleRateItem = new ToolStripMenuItem("Abtastrate");
-        foreach (int rate in AudioFormat.SupportedSampleRates)
-            _sampleRateItem.DropDownItems.Add(new ToolStripMenuItem(StatusText.SampleRateMenuText(rate), null, (_, _) => ChangeSampleRate(rate)) { Tag = rate });
+        _exitItem = new ToolStripMenuItem(null, null, (_, _) => Exit());
+        ApplyTexts();
         RenderSampleRate();
+        RenderLanguage();
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(
         [
             new ToolStripMenuItem($"Oreja {version}") { Enabled = false },
             new ToolStripSeparator(),
             _toggleItem,
-            new ToolStripMenuItem("Aufnahmeordner öffnen", null, (_, _) => OpenOutputFolder()),
-            new ToolStripMenuItem("Aufnahmeordner ändern…", null, (_, _) => ChangeOutputFolder()),
+            _openFolderItem,
+            _changeFolderItem,
             _sampleRateItem,
+            _languageItem,
             _autostartItem,
             new ToolStripSeparator(),
-            new ToolStripMenuItem("Beenden", null, (_, _) => Exit()),
+            _exitItem,
         ]);
 
         _notifyIcon = new NotifyIcon { ContextMenuStrip = menu };
@@ -83,10 +101,40 @@ public sealed class TrayApp : ApplicationContext
     private void Render(RecorderStatus status)
     {
         if (_exiting) return;
+        _shownStatus = status; // für den Sprachwechsel, der Tooltip und Menütext neu setzen muss
         _notifyIcon.Icon = _icons[StatusText.IconKind(status)];
-        _notifyIcon.Text = StatusText.Tooltip(status);
-        _toggleItem.Text = StatusText.ToggleMenuText(status);
+        _notifyIcon.Text = StatusText.Tooltip(status, _text);
+        _toggleItem.Text = StatusText.ToggleMenuText(status, _text);
         _sampleRateItem.Enabled = status.State != RecorderState.Recording; // gilt erst ab der nächsten Aufnahme
+    }
+
+    /// <summary>Setzt alle vom Aufnahmezustand unabhängigen Menütexte in der aktuellen Sprache.</summary>
+    private void ApplyTexts()
+    {
+        _openFolderItem.Text = _text.OpenFolder;
+        _changeFolderItem.Text = _text.ChangeFolder;
+        _sampleRateItem.Text = _text.SampleRate;
+        foreach (ToolStripMenuItem item in _sampleRateItem.DropDownItems)
+            item.Text = StatusText.SampleRateMenuText((int)item.Tag!, _text);
+        _languageItem.Text = _text.Language;
+        foreach (ToolStripMenuItem item in _languageItem.DropDownItems)
+        {
+            item.Text = (string)item.Tag! switch
+            {
+                Settings.LanguageGerman => _text.LanguageGerman,
+                Settings.LanguageEnglish => _text.LanguageEnglish,
+                _ => _text.LanguageAuto,
+            };
+        }
+        _autostartItem.Text = _text.Autostart;
+        _exitItem.Text = _text.Exit;
+    }
+
+    private void RenderLanguage()
+    {
+        string current = _settings.Language;
+        foreach (ToolStripMenuItem item in _languageItem.DropDownItems)
+            item.Checked = (string)item.Tag! == current;
     }
 
     private void RenderSampleRate()
@@ -108,7 +156,7 @@ public sealed class TrayApp : ApplicationContext
         catch (Exception ex)
         {
             _log.Error("Umschalten der Aufnahme fehlgeschlagen", ex);
-            Render(new RecorderStatus(RecorderState.Error, ErrorMessage: "Interner Fehler – siehe Protokoll"));
+            Render(new RecorderStatus(RecorderState.Error, Error: RecorderError.Internal));
         }
         finally
         {
@@ -152,7 +200,7 @@ public sealed class TrayApp : ApplicationContext
     {
         using var dialog = new FolderBrowserDialog
         {
-            Description = "Aufnahmeordner wählen",
+            Description = _text.ChooseFolderTitle,
             UseDescriptionForTitle = true,
             SelectedPath = _settings.OutputFolder,
             ShowNewFolderButton = true,
@@ -176,6 +224,23 @@ public sealed class TrayApp : ApplicationContext
             _log.Error("Abtastrate konnte nicht gespeichert werden", ex);
         }
         RenderSampleRate();
+    }
+
+    private void ChangeLanguage(string language)
+    {
+        try
+        {
+            _settings.Language = language;
+            _log.Info($"Sprache geändert: {(language == Settings.LanguageAutomatic ? "automatisch" : language)}");
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Sprache konnte nicht gespeichert werden", ex);
+        }
+        _text = UiText.Resolve(_settings.Language, CultureInfo.CurrentUICulture);
+        ApplyTexts();
+        RenderLanguage();
+        Render(_shownStatus);
     }
 
     private void ToggleAutostart()

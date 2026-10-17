@@ -11,11 +11,14 @@ public enum Degradation
     NoSystemAudio = 4,
 }
 
+/// <summary>Grund eines Fehlerzustands; den Text dazu liefert die Oberfläche.</summary>
+public enum RecorderError { WriteFailed, Internal, NoDevice }
+
 public sealed record RecorderStatus(
     RecorderState State,
     Degradation Degradation = Degradation.None,
     DateTime? StartedAt = null,
-    string? ErrorMessage = null)
+    RecorderError? Error = null)
 {
     public static readonly RecorderStatus Idle = new(RecorderState.Idle);
 }
