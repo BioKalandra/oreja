@@ -42,7 +42,9 @@ public sealed class WasapiBackendTests : IDisposable
         var micId = backend.GetDefaultCaptureDeviceId();
         if (micId is null) return;
 
-        var fifo = new SampleFifo(AudioMixer.PrebufferSamplesFor(rate), AudioMixer.MaxBufferedSamplesFor(rate));
+        // Großzügige Obergrenze (5 s): Die Aufnahme dauert ~1 s plus Anlaufzeit; ein Überlauf
+        // würde die FIFO kürzen und den Vergleich mit den beobachteten Samples verfälschen.
+        var fifo = new SampleFifo(AudioMixer.PrebufferSamplesFor(rate), rate * 5);
         int observed = 0;
         var watch = System.Diagnostics.Stopwatch.StartNew();
         using (var source = backend.CreateSource(micId, SourceKind.Microphone, rate, fifo, samples => Interlocked.Add(ref observed, samples.Length)))
