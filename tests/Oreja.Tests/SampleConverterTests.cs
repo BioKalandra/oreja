@@ -20,9 +20,9 @@ public sealed class SampleConverterTests
     }
 
     /// <summary>Wandelt eine Sekunde Signal in 10-ms-Blöcken und sammelt die Ausgabe.</summary>
-    private static List<float> ConvertOneSecond(WaveFormat format, Func<int, int, float> sampleAt, Func<float[], byte[]> encode)
+    private static List<float> ConvertOneSecond(WaveFormat format, int outputRate, Func<int, int, float> sampleAt, Func<float[], byte[]> encode)
     {
-        var converter = new SampleConverter(format);
+        var converter = new SampleConverter(format, outputRate);
         int framesPerChunk = format.SampleRate / 100;
         var output = new List<float>();
         for (int chunk = 0; chunk < 100; chunk++)
@@ -39,7 +39,7 @@ public sealed class SampleConverterTests
     [Fact]
     public void PassesThroughPcm16MonoAt16k()
     {
-        var converter = new SampleConverter(new WaveFormat(16000, 16, 1));
+        var converter = new SampleConverter(new WaveFormat(16000, 16, 1), 16000);
 
         var result = converter.Convert(PcmBytes([0, 16384, -16384, 32767])).ToArray();
 
@@ -49,7 +49,7 @@ public sealed class SampleConverterTests
     [Fact]
     public void DownmixesStereoFloatByAveraging()
     {
-        var converter = new SampleConverter(WaveFormat.CreateIeeeFloatWaveFormat(16000, 2));
+        var converter = new SampleConverter(WaveFormat.CreateIeeeFloatWaveFormat(16000, 2), 16000);
 
         var result = converter.Convert(FloatBytes([1.0f, 0.0f, 0.5f, -0.5f])).ToArray();
 
@@ -59,7 +59,7 @@ public sealed class SampleConverterTests
     [Fact]
     public void Reads24BitPcm()
     {
-        var converter = new SampleConverter(new WaveFormat(16000, 24, 1));
+        var converter = new SampleConverter(new WaveFormat(16000, 24, 1), 16000);
 
         var result = converter.Convert([0x00, 0x00, 0x40, 0x00, 0x00, 0xC0]).ToArray();
 
@@ -70,7 +70,7 @@ public sealed class SampleConverterTests
     public void ReadsExtensibleFloatFormat()
     {
         var format = new WaveFormatExtensible(16000, 32, 1, true, 32, 4);
-        var converter = new SampleConverter(format);
+        var converter = new SampleConverter(format, 16000);
 
         var result = converter.Convert(FloatBytes([0.25f, -0.75f])).ToArray();
 
@@ -82,6 +82,7 @@ public sealed class SampleConverterTests
     {
         var output = ConvertOneSecond(
             WaveFormat.CreateIeeeFloatWaveFormat(48000, 2),
+            16000,
             (frame, _) => (float)(0.5 * Math.Sin(2 * Math.PI * 440 * frame / 48000.0)),
             FloatBytes);
 
@@ -95,6 +96,7 @@ public sealed class SampleConverterTests
     {
         var output = ConvertOneSecond(
             new WaveFormat(44100, 16, 2),
+            16000,
             (frame, _) => (float)(0.5 * Math.Sin(2 * Math.PI * 440 * frame / 44100.0)),
             floats => PcmBytes(floats.Select(f => (short)(f * 32767)).ToArray()));
 
@@ -106,6 +108,7 @@ public sealed class SampleConverterTests
     {
         var output = ConvertOneSecond(
             WaveFormat.CreateIeeeFloatWaveFormat(48000, 6),
+            16000,
             (_, _) => 0.6f,
             FloatBytes);
 
@@ -116,6 +119,104 @@ public sealed class SampleConverterTests
     [Fact]
     public void RejectsUnsupportedFormat()
     {
-        Assert.Throws<NotSupportedException>(() => new SampleConverter(new WaveFormat(16000, 8, 1)));
+        Assert.Throws<NotSupportedException>(() => new SampleConverter(new WaveFormat(16000, 8, 1), 16000));
+    }
+
+    [Theory]
+    [InlineData(16000)]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void SameRateIsPassedThroughBitExactAfterDownmix(int rate)
+    {
+        var converter = new SampleConverter(WaveFormat.CreateIeeeFloatWaveFormat(rate, 2), rate);
+
+        var result = converter.Convert(FloatBytes([1.0f, 0.0f, 0.5f, -0.5f, 0.25f, 0.75f])).ToArray();
+
+        Assert.Equal(new[] { 0.5f, 0f, 0.5f }, result);
+    }
+
+    [Theory]
+    [InlineData(16000, 44100)]
+    [InlineData(16000, 48000)]
+    [InlineData(44100, 48000)]
+    [InlineData(48000, 44100)]
+    [InlineData(48000, 16000)]
+    [InlineData(44100, 16000)]
+    [InlineData(16000, 16000)]
+    public void ProducesRoughlyOneSecondOfOutputAtTheTargetRate(int inputRate, int outputRate)
+    {
+        var output = ConvertOneSecond(
+            WaveFormat.CreateIeeeFloatWaveFormat(inputRate, 1),
+            outputRate,
+            (frame, _) => (float)(0.5 * Math.Sin(2 * Math.PI * 440 * frame / inputRate)),
+            FloatBytes);
+
+        int tolerance = outputRate / 200;
+        Assert.InRange(output.Count, outputRate - tolerance, outputRate + tolerance);
+    }
+
+    [Fact]
+    public void ResamplesStereoFloat44100To48kKeepingLevel()
+    {
+        var output = ConvertOneSecond(
+            WaveFormat.CreateIeeeFloatWaveFormat(44100, 2),
+            48000,
+            (frame, _) => (float)(0.5 * Math.Sin(2 * Math.PI * 440 * frame / 44100.0)),
+            FloatBytes);
+
+        Assert.InRange(output.Count, 48000 - 240, 48000 + 240);
+        Assert.InRange(Rms(output.Skip(480)), 0.3536 - 0.02, 0.3536 + 0.02);
+    }
+
+    // Die folgenden Tests legen den Sinc-Modus fest: Der bisherige Modus (Sinc aus, 2 Filter-Stufen)
+    // dämpft 6 kHz bei 48k -> 16k auf ca. 41 % und lässt 12 kHz mit ca. 2 % durch.
+
+    [Fact]
+    public void Sinc48kTo16kKeepsPassbandTone()
+    {
+        double ratio = ToneRatio(inputRate: 48000, outputRate: 16000, frequency: 6000);
+
+        Assert.InRange(ratio, 0.90, 1.05);
+    }
+
+    [Theory]
+    [InlineData(10000)]
+    [InlineData(12000)]
+    public void Sinc48kTo16kSuppressesToneAboveOutputNyquist(int frequency)
+    {
+        double ratio = ToneRatio(inputRate: 48000, outputRate: 16000, frequency);
+
+        Assert.True(ratio < 0.01, $"{frequency} Hz nicht unterdrückt: {ratio:P2} des Eingangspegels");
+    }
+
+    [Fact]
+    public void Sinc44100To16kSuppressesToneAboveOutputNyquist()
+    {
+        double ratio = ToneRatio(inputRate: 44100, outputRate: 16000, frequency: 11000);
+
+        Assert.True(ratio < 0.01, $"11 kHz nicht unterdrückt: {ratio:P2} des Eingangspegels");
+    }
+
+    [Theory]
+    [InlineData(44100, 48000)]
+    [InlineData(48000, 44100)]
+    public void SincKeepsHighToneWhenOutputRateIsHigh(int inputRate, int outputRate)
+    {
+        double ratio = ToneRatio(inputRate, outputRate, frequency: 15000);
+
+        Assert.InRange(ratio, 0.90, 1.05);
+    }
+
+    private static double Rms(IEnumerable<float> samples) => Math.Sqrt(samples.Average(s => (double)s * s));
+
+    /// <summary>Ausgangs-RMS im Verhältnis zum RMS eines Sinus mit Amplitude 0,5 (Einschwingzeit ausgeklammert).</summary>
+    private static double ToneRatio(int inputRate, int outputRate, int frequency)
+    {
+        var output = ConvertOneSecond(
+            WaveFormat.CreateIeeeFloatWaveFormat(inputRate, 1),
+            outputRate,
+            (frame, _) => (float)(0.5 * Math.Sin(2 * Math.PI * frequency * frame / inputRate)),
+            FloatBytes);
+        return Rms(output.Skip(outputRate / 20)) / (0.5 / Math.Sqrt(2));
     }
 }

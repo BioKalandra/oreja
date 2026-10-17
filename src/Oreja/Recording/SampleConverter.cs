@@ -4,7 +4,11 @@ using NAudio.Wave;
 
 namespace Oreja.Recording;
 
-/// <summary>Wandelt Capture-Puffer im Geräteformat in 16 kHz Mono Float (Kanäle gemittelt, WDL-Resampler).</summary>
+/// <summary>
+/// Wandelt Capture-Puffer im Geräteformat in Mono Float mit der Zielrate (Kanäle gemittelt).
+/// Weicht die Geräterate ab, rechnet der WDL-Resampler im Sinc-Modus um; dessen Tiefpass
+/// unterdrückt beim Heruntertakten alles oberhalb der halben Zielrate, statt es zurückzuspiegeln.
+/// </summary>
 public sealed class SampleConverter
 {
     private static readonly Guid PcmSubFormat = new("00000001-0000-0010-8000-00aa00389b71");
@@ -22,7 +26,7 @@ public sealed class SampleConverter
     private float[] _mono = new float[4096];
     private float[] _output = new float[4096];
 
-    public SampleConverter(WaveFormat input, int outputRate = AudioMixer.SampleRate)
+    public SampleConverter(WaveFormat input, int outputRate)
     {
         _kind = Classify(input);
         _channels = input.Channels;
@@ -34,7 +38,7 @@ public sealed class SampleConverter
         if (_inputRate != _outputRate)
         {
             _resampler = new WdlResampler();
-            _resampler.SetMode(true, 2, false);
+            _resampler.SetMode(true, 0, true, 64, 32); // Sinc: 64 Stützstellen, 32-fach überabgetastet
             _resampler.SetFilterParms();
             _resampler.SetFeedMode(true);
             _resampler.SetRates(_inputRate, _outputRate);

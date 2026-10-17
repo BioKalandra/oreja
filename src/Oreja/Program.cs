@@ -40,7 +40,8 @@ internal static class Program
 
         // WASAPI-Objekte müssen im MTA leben, deshalb entsteht das Backend auf einem Thread-Pool-Thread.
         var backend = Task.Run(() => new WasapiBackend(log)).GetAwaiter().GetResult();
-        var recorder = new Recorder(backend, new SystemClock(), path => LibFlacSink.Create(path), paths, log);
+        var recorder = new Recorder(backend, new SystemClock(), () => settings.SampleRate,
+            (path, sampleRate) => LibFlacSink.Create(path, sampleRate), paths, log);
 
         using (var app = new TrayApp(recorder, settings, autostart, paths, mover, log))
         {

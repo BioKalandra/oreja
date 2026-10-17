@@ -5,7 +5,7 @@ public enum SourceKind { Microphone, Loopback }
 /// <summary>Erhält jede gewandelte Sample-Folge einer Quelle (Capture-Thread).</summary>
 public delegate void SampleObserver(ReadOnlySpan<float> samples);
 
-/// <summary>Laufende Aufnahme eines Geräts, die 16 kHz Mono Float in ihren FIFO schreibt.</summary>
+/// <summary>Laufende Aufnahme eines Geräts, die Mono Float in der Abtastrate der Aufnahme in ihren FIFO schreibt.</summary>
 public interface IAudioSource : IDisposable
 {
     string DeviceId { get; }

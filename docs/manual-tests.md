@@ -17,3 +17,7 @@ Nach jedem Test im Zweifel `%LOCALAPPDATA%\Oreja\oreja.log` ansehen.
 | 10 | Zweimal schnell hintereinander auf das Icon klicken | Aufnahme startet und bleibt an | ☐ |
 | 11 | `Oreja.exe` ein zweites Mal starten | Kein zweites Icon | ☐ |
 | 12 | Menü „Mit Windows starten“ aus- und wieder einschalten, neu anmelden | Häkchen entspricht dem Verhalten beim Anmelden | ☐ |
+| 13 | Rechtsklick → „Abtastrate“ öffnen, „44,1 kHz“ wählen, Oreja beenden und neu starten | Einträge „16 kHz (Spracherkennung)“, „44,1 kHz“, „48 kHz (Hörclips)“; Häkchen vorher bei 16 kHz (Erststart), nach dem Neustart bei 44,1 kHz | ☐ |
+| 14 | „48 kHz (Hörclips)“ wählen, 1 Minute aufnehmen, `ffprobe datei.flac` | `48000 Hz, mono`; Protokoll: „Aufnahme gestartet: … (n Quellen, 48000 Hz)“ und „Aufnahme beendet: … (48000 Hz) …“ | ☐ |
+| 15 | Dasselbe mit „44,1 kHz“ und „16 kHz (Spracherkennung)“ | Datei hat 44100 bzw. 16000 Hz, Protokoll nennt die Rate; die 48-kHz-Datei ist deutlich größer als die 16-kHz-Datei | ☐ |
+| 16 | Während einer Aufnahme Rechtsklick → „Abtastrate“ | Eintrag ausgegraut; nach dem Stoppen wieder wählbar | ☐ |

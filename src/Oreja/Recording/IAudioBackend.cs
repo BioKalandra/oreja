@@ -5,7 +5,8 @@ public interface IAudioBackend : IDisposable
 {
     IReadOnlyList<string> GetActiveRenderDeviceIds();
     string? GetDefaultCaptureDeviceId();
-    IAudioSource CreateSource(string deviceId, SourceKind kind, SampleFifo fifo, SampleObserver? observer);
+    /// <summary>Erzeugt eine Quelle, die auf <paramref name="sampleRate"/> umgerechnet in <paramref name="fifo"/> schreibt.</summary>
+    IAudioSource CreateSource(string deviceId, SourceKind kind, int sampleRate, SampleFifo fifo, SampleObserver? observer);
 
     event Action<string>? RenderDeviceActivated;
     event Action<string>? DeviceDeactivated;

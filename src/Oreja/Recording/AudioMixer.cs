@@ -11,37 +11,46 @@ public delegate void PcmWriter(ReadOnlySpan<short> samples);
 /// </summary>
 public sealed class AudioMixer
 {
-    public const int SampleRate = 16000;
-    public const int PrebufferSamples = SampleRate / 5; // 200 ms
-    public const int MaxBufferedSamples = SampleRate;   // 1 s
-
-    /// <summary>
-    /// Größere Rückstände (10 s) bedeuten, dass der Taktgeber stillstand – etwa im Modern Standby
-    /// ohne Suspend-Ereignis. Dann wird die Lücke übersprungen statt stundenlang Stille zu kodieren,
-    /// was das Stoppen blockieren und die Transkription mit Leerlauf füllen würde.
-    /// </summary>
-    public const int MaxCatchUpSamples = SampleRate * 10;
-
     private readonly IClock _clock;
     private readonly PcmWriter _output;
     private readonly Action<TimeSpan>? _onDiscontinuity;
     private long _skipped;
     private readonly object _gate = new();
     private readonly List<SampleFifo> _sources = [];
-    private readonly float[] _mix = new float[SampleRate];
-    private short[] _pcm = new short[SampleRate];
+    private readonly float[] _mix;
+    private short[] _pcm;
     private TimeSpan _start;
     private long _written;
     private bool _started;
     private int _removedOverflows;
 
-    /// <param name="onDiscontinuity">Wird mit der Länge einer übersprungenen Lücke aufgerufen (siehe <see cref="MaxCatchUpSamples"/>).</param>
-    public AudioMixer(IClock clock, PcmWriter output, Action<TimeSpan>? onDiscontinuity = null)
+    /// <param name="sampleRate">Abtastrate, in der Quellen liefern und der Mixer ausgibt.</param>
+    /// <param name="onDiscontinuity">Wird mit der Länge einer übersprungenen Lücke aufgerufen (siehe <see cref="MaxCatchUpSamplesFor"/>).</param>
+    public AudioMixer(IClock clock, int sampleRate, PcmWriter output, Action<TimeSpan>? onDiscontinuity = null)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(sampleRate);
         _clock = clock;
+        SampleRate = sampleRate;
         _output = output;
         _onDiscontinuity = onDiscontinuity;
+        _mix = new float[sampleRate]; // Blöcke von höchstens 1 s
+        _pcm = new short[sampleRate];
     }
+
+    /// <summary>Vorlauf je Quelle: 200 ms.</summary>
+    public static int PrebufferSamplesFor(int sampleRate) => sampleRate / 5;
+
+    /// <summary>Höchstfüllstand je Quelle: 1 s.</summary>
+    public static int MaxBufferedSamplesFor(int sampleRate) => sampleRate;
+
+    /// <summary>
+    /// Größere Rückstände (10 s) bedeuten, dass der Taktgeber stillstand – etwa im Modern Standby
+    /// ohne Suspend-Ereignis. Dann wird die Lücke übersprungen statt stundenlang Stille zu kodieren,
+    /// was das Stoppen blockieren und die Transkription mit Leerlauf füllen würde.
+    /// </summary>
+    public static int MaxCatchUpSamplesFor(int sampleRate) => sampleRate * 10;
+
+    public int SampleRate { get; }
 
     public long SamplesWritten { get { lock (_gate) return _written; } }
 
@@ -52,7 +61,7 @@ public sealed class AudioMixer
 
     public SampleFifo AddSource()
     {
-        var fifo = new SampleFifo(PrebufferSamples, MaxBufferedSamples);
+        var fifo = new SampleFifo(PrebufferSamplesFor(SampleRate), MaxBufferedSamplesFor(SampleRate));
         lock (_gate) _sources.Add(fifo);
         return fifo;
     }
@@ -78,7 +87,7 @@ public sealed class AudioMixer
 
     /// <summary>
     /// Gibt alle laut Uhr fälligen Samples aus (in Blöcken von höchstens 1 s). Rückstände über
-    /// <see cref="MaxCatchUpSamples"/> werden als Zeitsprung übersprungen und gemeldet.
+    /// <see cref="MaxCatchUpSamplesFor"/> werden als Zeitsprung übersprungen und gemeldet.
     /// </summary>
     public void Tick()
     {
@@ -87,7 +96,7 @@ public sealed class AudioMixer
             if (!_started) throw new InvalidOperationException("Start() wurde nicht aufgerufen");
             long due = (_clock.Elapsed - _start).Ticks * SampleRate / TimeSpan.TicksPerSecond - _skipped;
             long pending = due - _written;
-            if (pending > MaxCatchUpSamples)
+            if (pending > MaxCatchUpSamplesFor(SampleRate))
             {
                 _skipped += pending;
                 _onDiscontinuity?.Invoke(TimeSpan.FromTicks(pending * TimeSpan.TicksPerSecond / SampleRate));

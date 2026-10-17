@@ -18,7 +18,8 @@ public sealed class Recorder : IDisposable
 
     private readonly IAudioBackend _backend;
     private readonly IClock _clock;
-    private readonly Func<string, IFlacSink> _createSink;
+    private readonly Func<int> _getSampleRate;
+    private readonly Func<string, int, IFlacSink> _createSink;
     private readonly OutputPaths _paths;
     private readonly Log _log;
     private readonly Action<Action> _dispatch;
@@ -27,11 +28,14 @@ public sealed class Recorder : IDisposable
     private RecorderStatus _status = RecorderStatus.Idle;
     private Session? _session;
 
-    public Recorder(IAudioBackend backend, IClock clock, Func<string, IFlacSink> createSink, OutputPaths paths, Log log,
-        Action<Action>? dispatch = null, bool runPumpThread = true)
+    /// <param name="getSampleRate">Wird bei jedem Start gelesen; die Rate gilt dann für die ganze Aufnahme.</param>
+    /// <param name="createSink">Legt die Aufnahmedatei mit Pfad und Abtastrate an.</param>
+    public Recorder(IAudioBackend backend, IClock clock, Func<int> getSampleRate, Func<string, int, IFlacSink> createSink,
+        OutputPaths paths, Log log, Action<Action>? dispatch = null, bool runPumpThread = true)
     {
         _backend = backend;
         _clock = clock;
+        _getSampleRate = getSampleRate;
         _createSink = createSink;
         _paths = paths;
         _log = log;
@@ -86,12 +90,18 @@ public sealed class Recorder : IDisposable
     private RecorderStatus StartLocked()
     {
         var startedAt = DateTime.Now;
+        int sampleRate = _getSampleRate();
+        if (!AudioFormat.IsSupported(sampleRate))
+        {
+            _log.Info($"Abtastrate {sampleRate} Hz wird nicht unterstützt, verwende {AudioFormat.DefaultSampleRate} Hz");
+            sampleRate = AudioFormat.DefaultSampleRate;
+        }
         string path;
         IFlacSink sink;
         try
         {
             path = _paths.NewRecordingPath(startedAt);
-            sink = _createSink(path);
+            sink = _createSink(path, sampleRate);
         }
         catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
         {
@@ -99,7 +109,7 @@ public sealed class Recorder : IDisposable
             return new RecorderStatus(RecorderState.Error, ErrorMessage: WriteError);
         }
 
-        var mixer = new AudioMixer(_clock, sink.Write,
+        var mixer = new AudioMixer(_clock, sampleRate, sink.Write,
             gap => _log.Info($"Zeitsprung erkannt: Taktgeber stand {gap:c} still, Lücke wird übersprungen"));
         var session = new Session(path, sink, mixer,
             new MicSilenceDetector(_clock, MicSilenceDetector.DefaultThreshold));
@@ -136,7 +146,7 @@ public sealed class Recorder : IDisposable
             session.PumpThread.Start();
         }
 
-        _log.Info($"Aufnahme gestartet: {path} ({session.Sources.Count} Quellen)");
+        _log.Info($"Aufnahme gestartet: {path} ({session.Sources.Count} Quellen, {sampleRate} Hz)");
         return new RecorderStatus(RecorderState.Recording, ComputeDegradation(session), startedAt);
     }
 
@@ -188,7 +198,7 @@ public sealed class Recorder : IDisposable
             else status = _status;
         }
 
-        _log.Info($"Aufnahme beendet: {session.Path}, Pufferüberläufe: {session.Mixer.OverflowCount}" +
+        _log.Info($"Aufnahme beendet: {session.Path} ({session.Mixer.SampleRate} Hz), Pufferüberläufe: {session.Mixer.OverflowCount}" +
                   (errorMessage is null ? "" : $" ({errorMessage})"));
         StatusChanged?.Invoke(status);
         RecordingFinished?.Invoke(session.Path);
@@ -298,7 +308,7 @@ public sealed class Recorder : IDisposable
         try
         {
             var observer = kind == SourceKind.Microphone ? new SampleObserver(session.MicDetector.Observe) : null;
-            source = _backend.CreateSource(deviceId, kind, fifo, observer);
+            source = _backend.CreateSource(deviceId, kind, session.Mixer.SampleRate, fifo, observer);
             source.Stopped += (s, error) => _dispatch(() => OnSourceStopped(s, error));
             source.Start();
             session.Sources.Add(source, fifo);

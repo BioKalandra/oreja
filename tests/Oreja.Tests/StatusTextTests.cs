@@ -58,4 +58,13 @@ public sealed class StatusTextTests
 
         Assert.Equal(127, StatusText.Tooltip(status).Length);
     }
+
+    [Theory]
+    [InlineData(16000, "16 kHz (Spracherkennung)")]
+    [InlineData(44100, "44,1 kHz")]
+    [InlineData(48000, "48 kHz (Hörclips)")]
+    public void SampleRateMenuTextNamesTheRate(int rate, string expected)
+    {
+        Assert.Equal(expected, StatusText.SampleRateMenuText(rate));
+    }
 }
