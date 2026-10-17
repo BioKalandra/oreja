@@ -19,7 +19,7 @@ public sealed class WasapiSource : IAudioSource
     private volatile bool _disposed;
 
     /// <summary>Übernimmt den Besitz von <paramref name="device"/>.</summary>
-    public WasapiSource(MMDevice device, SourceKind kind, SampleFifo fifo, SampleObserver? observer)
+    public WasapiSource(MMDevice device, SourceKind kind, int sampleRate, SampleFifo fifo, SampleObserver? observer)
     {
         _device = device;
         DeviceId = device.ID;
@@ -29,7 +29,7 @@ public sealed class WasapiSource : IAudioSource
         _capture = kind == SourceKind.Loopback ? new WasapiLoopbackCapture(device) : new WasapiCapture(device);
         try
         {
-            _converter = new SampleConverter(_capture.WaveFormat);
+            _converter = new SampleConverter(_capture.WaveFormat, sampleRate);
         }
         catch
         {

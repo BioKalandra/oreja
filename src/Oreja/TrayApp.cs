@@ -22,6 +22,7 @@ public sealed class TrayApp : ApplicationContext
     private readonly NotifyIcon _notifyIcon;
     private readonly ToolStripMenuItem _toggleItem;
     private readonly ToolStripMenuItem _autostartItem;
+    private readonly ToolStripMenuItem _sampleRateItem;
     private readonly ClickGuard _clickGuard = new(TimeSpan.FromSeconds(1));
     private readonly object _movesGate = new();
     private Task _moves = Task.CompletedTask;
@@ -45,6 +46,10 @@ public sealed class TrayApp : ApplicationContext
         {
             Checked = _autostart.IsEnabled,
         };
+        _sampleRateItem = new ToolStripMenuItem("Abtastrate");
+        foreach (int rate in AudioFormat.SupportedSampleRates)
+            _sampleRateItem.DropDownItems.Add(new ToolStripMenuItem(StatusText.SampleRateMenuText(rate), null, (_, _) => ChangeSampleRate(rate)) { Tag = rate });
+        RenderSampleRate();
         var menu = new ContextMenuStrip();
         menu.Items.AddRange(
         [
@@ -53,6 +58,7 @@ public sealed class TrayApp : ApplicationContext
             _toggleItem,
             new ToolStripMenuItem("Aufnahmeordner öffnen", null, (_, _) => OpenOutputFolder()),
             new ToolStripMenuItem("Aufnahmeordner ändern…", null, (_, _) => ChangeOutputFolder()),
+            _sampleRateItem,
             _autostartItem,
             new ToolStripSeparator(),
             new ToolStripMenuItem("Beenden", null, (_, _) => Exit()),
@@ -80,6 +86,14 @@ public sealed class TrayApp : ApplicationContext
         _notifyIcon.Icon = _icons[StatusText.IconKind(status)];
         _notifyIcon.Text = StatusText.Tooltip(status);
         _toggleItem.Text = StatusText.ToggleMenuText(status);
+        _sampleRateItem.Enabled = status.State != RecorderState.Recording; // gilt erst ab der nächsten Aufnahme
+    }
+
+    private void RenderSampleRate()
+    {
+        int current = _settings.SampleRate;
+        foreach (ToolStripMenuItem item in _sampleRateItem.DropDownItems)
+            item.Checked = (int)item.Tag! == current;
     }
 
     private async void Toggle()
@@ -148,6 +162,20 @@ public sealed class TrayApp : ApplicationContext
         _settings.OutputFolder = dialog.SelectedPath;
         _log.Info($"Aufnahmeordner geändert: {dialog.SelectedPath}");
         QueueMove();
+    }
+
+    private void ChangeSampleRate(int sampleRate)
+    {
+        try
+        {
+            _settings.SampleRate = sampleRate;
+            _log.Info($"Abtastrate geändert: {sampleRate} Hz");
+        }
+        catch (Exception ex)
+        {
+            _log.Error("Abtastrate konnte nicht gespeichert werden", ex);
+        }
+        RenderSampleRate();
     }
 
     private void ToggleAutostart()

@@ -13,13 +13,16 @@ public sealed class RecorderTests : IDisposable
     private readonly List<RecorderStatus> _statuses = [];
     private readonly List<string> _finished = [];
     private readonly Recorder _recorder;
-    private Func<string, IFlacSink>? _sinkOverride;
+    private readonly List<int> _sinkRates = [];
+    private Func<string, int, IFlacSink>? _sinkOverride;
+    private int _sampleRate = 16000;
+    private int _sampleRateReads;
 
     public RecorderTests()
     {
         var paths = new OutputPaths(Path.Combine(_root, "work"), () => Path.Combine(_root, "target"));
         var log = new Log(Path.Combine(_root, "oreja.log"));
-        _recorder = new Recorder(_backend, _clock, CreateSink, paths, log, dispatch: action => action(), runPumpThread: false);
+        _recorder = new Recorder(_backend, _clock, ReadSampleRate, CreateSink, paths, log, dispatch: action => action(), runPumpThread: false);
         _recorder.StatusChanged += _statuses.Add;
         _recorder.RecordingFinished += _finished.Add;
     }
@@ -32,14 +35,23 @@ public sealed class RecorderTests : IDisposable
 
     private FakeSink Sink => _sinks.Last();
 
-    private IFlacSink CreateSink(string path)
+    private int ReadSampleRate()
     {
-        if (_sinkOverride is not null) return _sinkOverride(path);
+        _sampleRateReads++;
+        return _sampleRate;
+    }
+
+    private IFlacSink CreateSink(string path, int sampleRate)
+    {
+        _sinkRates.Add(sampleRate);
+        if (_sinkOverride is not null) return _sinkOverride(path, sampleRate);
         File.WriteAllBytes(path, []);
-        var sink = new FakeSink();
+        var sink = new FakeSink(sampleRate);
         _sinks.Add(sink);
         return sink;
     }
+
+    private string ReadLog() => File.ReadAllText(Path.Combine(_root, "oreja.log"));
 
     /// <summary>Simuliert Echtzeit in 50-ms-Takten: optional Daten einspeisen, Uhr vorstellen, ein Mixer-Takt.</summary>
     private void Advance(int milliseconds, Action? perStep = null)
@@ -130,23 +142,28 @@ public sealed class RecorderTests : IDisposable
         Assert.Single(_sinks);
     }
 
-    [Fact]
-    public void MicrophoneAndSystemAudioAreMixedIntoTheFile()
+    [Theory]
+    [InlineData(16000)]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void MicrophoneAndSystemAudioAreMixedIntoTheFile(int rate)
     {
+        _sampleRate = rate;
         MicAndSpeaker();
         _recorder.Start();
+        int perStep = rate / 20;
 
         Advance(1000, () =>
         {
-            _backend.Live("mic").Feed(0.25f, 800);
-            _backend.Live("spk").Feed(0.25f, 800);
+            _backend.Live("mic").Feed(0.25f, perStep);
+            _backend.Live("spk").Feed(0.25f, perStep);
         });
         _recorder.Stop();
 
         // 1 s fällige Samples plus 150 ms, die beim Stoppen noch im Puffer lagen
-        Assert.Equal(18400, Sink.Samples.Count);
-        Assert.All(Sink.Samples.Take(2400), s => Assert.Equal(0, s));
-        Assert.All(Sink.Samples.Skip(2400), s => Assert.Equal(16384, s));
+        Assert.Equal(rate + 3 * perStep, Sink.Samples.Count);
+        Assert.All(Sink.Samples.Take(3 * perStep), s => Assert.Equal(0, s));
+        Assert.All(Sink.Samples.Skip(3 * perStep), s => Assert.Equal(16384, s));
     }
 
     [Fact]
@@ -326,18 +343,21 @@ public sealed class RecorderTests : IDisposable
         Assert.Single(_finished);
     }
 
-    [Fact]
-    public void StopAfterLongStallSkipsTheGapInsteadOfWritingSilence()
+    [Theory]
+    [InlineData(16000)]
+    [InlineData(48000)]
+    public void StopAfterLongStallSkipsTheGapInsteadOfWritingSilence(int rate)
     {
+        _sampleRate = rate;
         MicAndSpeaker();
         _recorder.Start();
 
         _clock.Advance(TimeSpan.FromMinutes(1)); // Taktgeber stand still, z. B. Modern Standby
         _recorder.Stop();
 
-        Assert.True(Sink.Samples.Count < AudioMixer.SampleRate, $"{Sink.Samples.Count} Samples Stille geschrieben");
+        Assert.True(Sink.Samples.Count < rate, $"{Sink.Samples.Count} Samples Stille geschrieben");
         Assert.Equal(RecorderStatus.Idle, _recorder.Status);
-        Assert.Contains("Zeitsprung", File.ReadAllText(Path.Combine(_root, "oreja.log")));
+        Assert.Contains("Zeitsprung", ReadLog());
     }
 
     [Fact]
@@ -359,7 +379,7 @@ public sealed class RecorderTests : IDisposable
     public void SinkCreationFailureIsReportedAsWriteError()
     {
         MicAndSpeaker();
-        _sinkOverride = _ => throw new IOException("kein Zugriff");
+        _sinkOverride = (_, _) => throw new IOException("kein Zugriff");
 
         _recorder.Start();
 
@@ -392,5 +412,152 @@ public sealed class RecorderTests : IDisposable
         _recorder.Stop();
 
         Assert.Equal(2, _finished.Distinct().Count());
+    }
+
+    [Fact]
+    public void SampleRateDefaultsToWhatTheRateSourceReturns()
+    {
+        MicAndSpeaker();
+
+        _recorder.Start();
+
+        Assert.All(_backend.Created, s => Assert.Equal(16000, s.SampleRate));
+        Assert.Equal(16000, Sink.SampleRate);
+    }
+
+    [Theory]
+    [InlineData(16000)]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void StartPassesTheSessionRateToEverySourceAndTheSink(int rate)
+    {
+        _sampleRate = rate;
+        MicAndSpeaker();
+        _backend.RenderDevices.Add("spk2");
+
+        _recorder.Start();
+
+        Assert.Equal(3, _backend.Created.Count);
+        Assert.All(_backend.Created, s => Assert.Equal(rate, s.SampleRate));
+        Assert.Equal(rate, Assert.Single(_sinkRates));
+        Assert.Equal(rate, Sink.SampleRate);
+    }
+
+    [Fact]
+    public void SampleRateIsReadOncePerStartAndKeptForTheWholeSession()
+    {
+        _sampleRate = 48000;
+        MicAndSpeaker();
+
+        _recorder.Start();
+        int readsAfterStart = _sampleRateReads;
+        _backend.Live("mic").Fail(new InvalidOperationException("Format geändert"));
+        _backend.ActivateRender("headset");
+        _backend.ChangeDefaultCapture("mic2");
+        Advance(200);
+        _recorder.Stop();
+
+        Assert.Equal(1, readsAfterStart);
+        Assert.Equal(readsAfterStart, _sampleRateReads);
+    }
+
+    [Fact]
+    public void RateChangeDuringRecordingOnlyAffectsTheNextRecording()
+    {
+        _sampleRate = 48000;
+        MicAndSpeaker();
+        _recorder.Start();
+
+        _sampleRate = 16000;
+        _backend.ActivateRender("headset");
+        _backend.Live("spk").Fail(new InvalidOperationException("Treiber-Reset"));
+        _backend.ChangeDefaultCapture("mic2");
+
+        Assert.All(_backend.Created, s => Assert.Equal(48000, s.SampleRate));
+        Assert.Equal(new[] { 48000 }, _sinkRates);
+
+        _recorder.Stop();
+        _recorder.Start();
+
+        Assert.Equal(new[] { 48000, 16000 }, _sinkRates);
+        Assert.Equal(16000, _backend.Live("mic").SampleRate);
+        Assert.Equal(16000, _sinks.Last().SampleRate);
+    }
+
+    [Theory]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void ReopenedAndLaterAddedSourcesGetTheSessionRate(int rate)
+    {
+        _sampleRate = rate;
+        MicAndSpeaker();
+        _recorder.Start();
+
+        _backend.Live("mic").Fail(new InvalidOperationException("kaputt"));
+        _backend.Live("spk").Fail(new InvalidOperationException("Treiber-Reset"));
+        _backend.ActivateRender("headset");
+        _backend.ChangeDefaultCapture("mic2");
+
+        Assert.Equal(2, _backend.Created.Count(s => s.DeviceId == "mic"));
+        Assert.Equal(2, _backend.Created.Count(s => s.DeviceId == "spk"));
+        Assert.All(_backend.Created, s => Assert.Equal(rate, s.SampleRate));
+        Assert.Equal(rate, _backend.Live("headset").SampleRate);
+        Assert.Equal(rate, _backend.Live("mic2").SampleRate);
+    }
+
+    [Theory]
+    [InlineData(16000)]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void LogNamesTheRateAtStartAndEnd(int rate)
+    {
+        _sampleRate = rate;
+        _backend.DefaultCapture = "mic";
+
+        _recorder.Start();
+        var startLine = ReadLog().Split('\n').Single(l => l.Contains("Aufnahme gestartet"));
+        _recorder.Stop();
+        var endLine = ReadLog().Split('\n').Single(l => l.Contains("Aufnahme beendet"));
+
+        Assert.Contains($"{rate} Hz", startLine);
+        Assert.Contains($"{rate} Hz", endLine);
+    }
+
+    [Fact]
+    public void LogShowsTheRateOfEachRecordingSeparately()
+    {
+        _backend.DefaultCapture = "mic";
+        _sampleRate = 48000;
+        _recorder.Start();
+        _recorder.Stop();
+        _sampleRate = 44100;
+        _recorder.Start();
+        _recorder.Stop();
+
+        var lines = ReadLog().Split('\n');
+        Assert.Single(lines, l => l.Contains("Aufnahme gestartet") && l.Contains("48000 Hz"));
+        Assert.Single(lines, l => l.Contains("Aufnahme gestartet") && l.Contains("44100 Hz"));
+        Assert.Single(lines, l => l.Contains("Aufnahme beendet") && l.Contains("48000 Hz"));
+        Assert.Single(lines, l => l.Contains("Aufnahme beendet") && l.Contains("44100 Hz"));
+    }
+
+    [Theory]
+    [InlineData(0)]
+    [InlineData(22050)]
+    [InlineData(-1)]
+    public void UnsupportedRateFallsBackToTheDefaultRate(int rate)
+    {
+        _sampleRate = rate;
+        MicAndSpeaker();
+
+        _recorder.Start();
+
+        Assert.Equal(RecorderState.Recording, _statuses.Last().State);
+        Assert.Equal(AudioFormat.DefaultSampleRate, Assert.Single(_sinkRates));
+        Assert.Equal(AudioFormat.DefaultSampleRate, Sink.SampleRate);
+        Assert.Equal(2, _backend.Created.Count);
+        Assert.All(_backend.Created, s => Assert.Equal(AudioFormat.DefaultSampleRate, s.SampleRate));
+        var startLine = ReadLog().Split('\n').Single(l => l.Contains("Aufnahme gestartet"));
+        Assert.Contains("16000 Hz", startLine);
     }
 }

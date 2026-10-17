@@ -1,12 +1,12 @@
 # Oreja
 
 Kleines Windows-Tray-Tool, das Mikrofon und Systemaudio gemischt als FLAC-Datei aufnimmt
-(16 kHz, Mono) – gedacht für die spätere Transkription mit Whisper.
+(Mono, Abtastrate einstellbar: 16 / 44,1 / 48 kHz) – gedacht für die spätere Transkription mit Whisper.
 
 ## Bedienung
 
 - **Linksklick** aufs Tray-Icon: Aufnahme starten bzw. stoppen
-- **Rechtsklick:** Menü mit Aufnahmeordner öffnen/ändern, Autostart, Beenden
+- **Rechtsklick:** Menü mit Aufnahmeordner öffnen/ändern, Abtastrate, Autostart, Beenden
 - **Icons:** grauer Ring = bereit, roter Kreis = Aufnahme, roter Kreis mit gelbem Punkt =
   Aufnahme mit Einschränkung (Tooltip nennt den Grund), grauer Ring mit gelbem Dreieck = Fehler
 
@@ -22,6 +22,9 @@ Aufnahmeordner verschoben (Voreinstellung `Dokumente\Oreja`). Protokoll: `%LOCAL
   „Standardkommunikationsgerät“. Systemaudio wird von allen Wiedergabegeräten aufgenommen.
 - **Google Drive:** Google Drive für Desktop installieren und einen Ordner darin als
   Aufnahmeordner wählen. Dort landen nur vollständige Dateien.
+- **Abtastrate:** 16 kHz (Voreinstellung) genügt der Spracherkennung. 44,1 oder 48 kHz behalten
+  auch die Höhen, etwa für Hörclips, und ergeben deutlich größere Dateien (bis etwa dreimal so
+  groß). Die Wahl gilt ab der nächsten Aufnahme; während einer Aufnahme ist das Menü gesperrt.
 - **Transkription:** Bei langen Pausen hilft der VAD-Filter, z. B. `vad_filter=True` in faster-whisper.
 - Gespräche mit anderen nur mit deren Einverständnis aufnehmen (§ 201 StGB).
 

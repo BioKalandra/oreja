@@ -10,19 +10,22 @@ public sealed class LibFlacSinkTests : IDisposable
 
     public void Dispose() => _dir.Delete(recursive: true);
 
-    [Fact]
-    public void RoundtripIsBitExact()
+    [Theory]
+    [InlineData(16000)]
+    [InlineData(44100)]
+    [InlineData(48000)]
+    public void RoundtripIsBitExactAtTheRequestedRate(int rate)
     {
-        var path = Path.Combine(_dir.FullName, "roundtrip.flac");
-        var input = TestSignal(32000);
+        var path = Path.Combine(_dir.FullName, $"roundtrip-{rate}.flac");
+        var input = TestSignal(32000, rate);
 
-        using (var sink = LibFlacSink.Create(path))
+        using (var sink = LibFlacSink.Create(path, rate))
         {
             for (int i = 0; i < input.Length; i += 800) sink.Write(input.AsSpan(i, 800));
             sink.Complete();
         }
 
-        Assert.Equal(input, ReadBack(path));
+        Assert.Equal(input, ReadBack(path, rate));
     }
 
     [Fact]
@@ -31,7 +34,7 @@ public sealed class LibFlacSinkTests : IDisposable
         var path = Path.Combine(_dir.FullName, "growing.flac");
         var input = TestSignal(48000);
 
-        using var sink = LibFlacSink.Create(path);
+        using var sink = LibFlacSink.Create(path, 48000);
         for (int i = 0; i < input.Length; i += 800) sink.Write(input.AsSpan(i, 800));
 
         Assert.True(new FileInfo(path).Length > 5000, "Frames müssen schon vor Complete() auf der Platte liegen");
@@ -44,13 +47,13 @@ public sealed class LibFlacSinkTests : IDisposable
         var path = Path.Combine(folder.FullName, "aufnahme.flac");
         var input = TestSignal(16000);
 
-        using (var sink = LibFlacSink.Create(path))
+        using (var sink = LibFlacSink.Create(path, 16000))
         {
             sink.Write(input);
             sink.Complete();
         }
 
-        Assert.Equal(input, ReadBack(path));
+        Assert.Equal(input, ReadBack(path, 16000));
     }
 
     [Fact]
@@ -59,13 +62,13 @@ public sealed class LibFlacSinkTests : IDisposable
         var path = Path.Combine(_dir.FullName, "exists.flac");
         File.WriteAllText(path, "x");
 
-        Assert.Throws<IOException>(() => LibFlacSink.Create(path));
+        Assert.Throws<IOException>(() => LibFlacSink.Create(path, 16000));
     }
 
     [Fact]
     public void WriteFailureSurfacesAsIOException()
     {
-        var sink = new LibFlacSink(new FailingStream(failAfterBytes: 4000));
+        var sink = new LibFlacSink(new FailingStream(failAfterBytes: 4000), 16000);
         var chunk = TestSignal(800);
 
         var error = Assert.Throws<IOException>(() =>
@@ -77,19 +80,19 @@ public sealed class LibFlacSinkTests : IDisposable
         sink.Dispose(); // darf nach einem Schreibfehler nicht werfen
     }
 
-    private static short[] TestSignal(int count)
+    private static short[] TestSignal(int count, int rate = 16000)
     {
         var samples = new short[count];
         for (int i = 0; i < count; i++)
-            samples[i] = (short)(Math.Sin(2 * Math.PI * 440 * i / 16000.0) * 12000 + (i % 7) - 3);
+            samples[i] = (short)(Math.Sin(2 * Math.PI * 440 * i / rate) * 12000 + (i % 7) - 3);
         return samples;
     }
 
-    private static short[] ReadBack(string path)
+    private static short[] ReadBack(string path, int expectedRate)
     {
         MediaFoundationApi.Startup();
         using var reader = new MediaFoundationReader(path);
-        Assert.Equal(16000, reader.WaveFormat.SampleRate);
+        Assert.Equal(expectedRate, reader.WaveFormat.SampleRate);
         Assert.Equal(1, reader.WaveFormat.Channels);
         Assert.Equal(16, reader.WaveFormat.BitsPerSample);
         using var pcm = new MemoryStream();

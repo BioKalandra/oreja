@@ -1,7 +1,7 @@
 namespace Oreja.Recording;
 
 /// <summary>
-/// Jitter-Puffer einer Quelle im Zielformat (16 kHz Mono Float). Wird vom Capture-Thread
+/// Jitter-Puffer einer Quelle im Zielformat (Mono Float in der Abtastrate der Aufnahme). Wird vom Capture-Thread
 /// beschrieben und vom Mixer-Thread gelesen.
 /// Zustände: „Füllen“ liefert Stille, bis der Vorlauf erreicht ist; „Abspielen“ liest,
 /// bis der Puffer leerläuft. Über dem Höchstfüllstand wird das Älteste verworfen.

@@ -20,10 +20,10 @@ public sealed unsafe class LibFlacSink : IFlacSink
     private Exception? _ioError;
     private bool _completed;
 
-    public static LibFlacSink Create(string path, int sampleRate = 16000) =>
+    public static LibFlacSink Create(string path, int sampleRate) =>
         new(new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read), sampleRate);
 
-    public LibFlacSink(Stream stream, int sampleRate = 16000)
+    public LibFlacSink(Stream stream, int sampleRate)
     {
         _stream = stream;
         int status;

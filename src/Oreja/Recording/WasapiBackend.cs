@@ -42,12 +42,12 @@ public sealed class WasapiBackend : IAudioBackend
         using (device) return device.ID;
     }
 
-    public IAudioSource CreateSource(string deviceId, SourceKind kind, SampleFifo fifo, SampleObserver? observer)
+    public IAudioSource CreateSource(string deviceId, SourceKind kind, int sampleRate, SampleFifo fifo, SampleObserver? observer)
     {
         var device = _enumerator.GetDevice(deviceId);
         try
         {
-            return new WasapiSource(device, kind, fifo, observer);
+            return new WasapiSource(device, kind, sampleRate, fifo, observer);
         }
         catch
         {

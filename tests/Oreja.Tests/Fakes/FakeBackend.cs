@@ -17,10 +17,10 @@ public sealed class FakeBackend : IAudioBackend
 
     public string? GetDefaultCaptureDeviceId() => DefaultCapture;
 
-    public IAudioSource CreateSource(string deviceId, SourceKind kind, SampleFifo fifo, SampleObserver? observer)
+    public IAudioSource CreateSource(string deviceId, SourceKind kind, int sampleRate, SampleFifo fifo, SampleObserver? observer)
     {
         if (BrokenDevices.Contains(deviceId)) throw new InvalidOperationException($"Gerät {deviceId} defekt");
-        var source = new FakeSource(deviceId, kind, fifo, observer);
+        var source = new FakeSource(deviceId, kind, sampleRate, fifo, observer);
         Created.Add(source);
         return source;
     }

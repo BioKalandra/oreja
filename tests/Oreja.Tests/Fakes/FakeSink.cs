@@ -2,8 +2,9 @@ using Oreja.Recording;
 
 namespace Oreja.Tests.Fakes;
 
-public sealed class FakeSink : IFlacSink
+public sealed class FakeSink(int sampleRate = 16000) : IFlacSink
 {
+    public int SampleRate { get; } = sampleRate;
     public List<short> Samples { get; } = [];
     public bool Completed { get; private set; }
     public bool Disposed { get; private set; }

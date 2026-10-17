@@ -9,6 +9,7 @@ public enum TrayIconKind { Idle, Recording, RecordingDegraded, Error }
 public static class StatusText
 {
     private const int MaxTooltipLength = 127;
+    private static readonly CultureInfo German = CultureInfo.GetCultureInfo("de-DE");
 
     public static TrayIconKind IconKind(RecorderStatus status) => status.State switch
     {
@@ -32,6 +33,18 @@ public static class StatusText
 
     public static string ToggleMenuText(RecorderStatus status) =>
         status.State == RecorderState.Recording ? "Aufnahme stoppen" : "Aufnahme starten";
+
+    /// <summary>Menüeintrag einer Abtastrate, z. B. „44,1 kHz“; 16 und 48 kHz nennen zusätzlich ihren Zweck.</summary>
+    public static string SampleRateMenuText(int sampleRate)
+    {
+        string khz = $"{(sampleRate / 1000.0).ToString("0.#", German)} kHz";
+        return sampleRate switch
+        {
+            16000 => $"{khz} (Spracherkennung)",
+            48000 => $"{khz} (Hörclips)",
+            _ => khz,
+        };
+    }
 
     private static string DegradationSuffix(Degradation degradation)
     {

@@ -2,10 +2,11 @@ using Oreja.Recording;
 
 namespace Oreja.Tests.Fakes;
 
-public sealed class FakeSource(string deviceId, SourceKind kind, SampleFifo fifo, SampleObserver? observer) : IAudioSource
+public sealed class FakeSource(string deviceId, SourceKind kind, int sampleRate, SampleFifo fifo, SampleObserver? observer) : IAudioSource
 {
     public string DeviceId { get; } = deviceId;
     public SourceKind Kind { get; } = kind;
+    public int SampleRate { get; } = sampleRate;
     public bool Started { get; private set; }
     public bool Disposed { get; private set; }
 
