@@ -1,12 +1,17 @@
 # Oreja
 
+**English:** Oreja is a small Windows tray tool that records your microphone and system audio,
+mixed into one FLAC file, for later transcription with Whisper. The menus follow the Windows
+display language: German on German Windows, English otherwise. To switch, right-click the tray
+icon and choose *Language* (*Sprache*).
+
 Kleines Windows-Tray-Tool, das Mikrofon und Systemaudio gemischt als FLAC-Datei aufnimmt
 (Mono, Abtastrate einstellbar: 16 / 44,1 / 48 kHz) – gedacht für die spätere Transkription mit Whisper.
 
 ## Bedienung
 
 - **Linksklick** aufs Tray-Icon: Aufnahme starten bzw. stoppen
-- **Rechtsklick:** Menü mit Aufnahmeordner öffnen/ändern, Abtastrate, Autostart, Beenden
+- **Rechtsklick:** Menü mit Aufnahmeordner öffnen/ändern, Abtastrate, Sprache, Autostart, Beenden
 - **Icons:** grauer Ring = bereit, roter Kreis = Aufnahme, roter Kreis mit gelbem Punkt =
   Aufnahme mit Einschränkung (Tooltip nennt den Grund), grauer Ring mit gelbem Dreieck = Fehler
 
@@ -25,6 +30,9 @@ Aufnahmeordner verschoben (Voreinstellung `Dokumente\Oreja`). Protokoll: `%LOCAL
 - **Abtastrate:** 16 kHz (Voreinstellung) genügt der Spracherkennung. 44,1 oder 48 kHz behalten
   auch die Höhen, etwa für Hörclips, und ergeben deutlich größere Dateien (bis etwa dreimal so
   groß). Die Wahl gilt ab der nächsten Aufnahme; während einer Aufnahme ist das Menü gesperrt.
+- **Sprache:** Die Oberfläche folgt der Windows-Sprache – Deutsch bei deutschem Windows, sonst
+  Englisch. Im Menü „Sprache“ lässt sie sich fest auf Deutsch oder English stellen; die Wahl wirkt
+  sofort und bleibt erhalten. Das Protokoll bleibt immer deutsch.
 - **Transkription:** Bei langen Pausen hilft der VAD-Filter, z. B. `vad_filter=True` in faster-whisper.
 - Gespräche mit anderen nur mit deren Einverständnis aufnehmen (§ 201 StGB).
 

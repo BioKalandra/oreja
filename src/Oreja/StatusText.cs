@@ -5,11 +5,10 @@ namespace Oreja;
 
 public enum TrayIconKind { Idle, Recording, RecordingDegraded, Error }
 
-/// <summary>Bildet den Recorder-Status auf Icon, Tooltip und Menütext ab.</summary>
+/// <summary>Bildet den Recorder-Status auf Icon, Tooltip und Menütext in der gewählten Sprache ab.</summary>
 public static class StatusText
 {
     private const int MaxTooltipLength = 127;
-    private static readonly CultureInfo German = CultureInfo.GetCultureInfo("de-DE");
 
     public static TrayIconKind IconKind(RecorderStatus status) => status.State switch
     {
@@ -19,39 +18,30 @@ public static class StatusText
         _ => TrayIconKind.Idle,
     };
 
-    public static string Tooltip(RecorderStatus status)
+    public static string Tooltip(RecorderStatus status, UiText text) => LimitTooltip(status.State switch
     {
-        string text = status.State switch
-        {
-            RecorderState.Recording =>
-                $"Oreja – Aufnahme seit {status.StartedAt?.ToString("HH:mm", CultureInfo.InvariantCulture)}{DegradationSuffix(status.Degradation)}",
-            RecorderState.Error => $"Oreja – Fehler: {status.ErrorMessage}",
-            _ => "Oreja – bereit",
-        };
-        return text.Length <= MaxTooltipLength ? text : text[..MaxTooltipLength];
-    }
+        RecorderState.Recording => text.TooltipRecording(
+            status.StartedAt?.ToString("HH:mm", CultureInfo.InvariantCulture) ?? "",
+            DegradationSuffix(status.Degradation, text)),
+        RecorderState.Error => text.TooltipError(text.ErrorReason(status.Error ?? RecorderError.Internal)),
+        _ => text.TooltipIdle,
+    });
 
-    public static string ToggleMenuText(RecorderStatus status) =>
-        status.State == RecorderState.Recording ? "Aufnahme stoppen" : "Aufnahme starten";
+    /// <summary>Kürzt auf die 127 Zeichen, die NotifyIcon.Text höchstens annimmt (länger wirft eine Ausnahme).</summary>
+    public static string LimitTooltip(string text) =>
+        text.Length <= MaxTooltipLength ? text : text[..MaxTooltipLength];
 
-    /// <summary>Menüeintrag einer Abtastrate, z. B. „44,1 kHz“; 16 und 48 kHz nennen zusätzlich ihren Zweck.</summary>
-    public static string SampleRateMenuText(int sampleRate)
-    {
-        string khz = $"{(sampleRate / 1000.0).ToString("0.#", German)} kHz";
-        return sampleRate switch
-        {
-            16000 => $"{khz} (Spracherkennung)",
-            48000 => $"{khz} (Hörclips)",
-            _ => khz,
-        };
-    }
+    public static string ToggleMenuText(RecorderStatus status, UiText text) =>
+        status.State == RecorderState.Recording ? text.Stop : text.Start;
 
-    private static string DegradationSuffix(Degradation degradation)
+    public static string SampleRateMenuText(int sampleRate, UiText text) => text.SampleRateOption(sampleRate);
+
+    private static string DegradationSuffix(Degradation degradation, UiText text)
     {
         var parts = new List<string>();
-        if (degradation.HasFlag(Degradation.NoMicrophone)) parts.Add("ohne Mikrofon");
-        if (degradation.HasFlag(Degradation.MicrophoneSilent)) parts.Add("Mikrofon stumm/gesperrt");
-        if (degradation.HasFlag(Degradation.NoSystemAudio)) parts.Add("ohne Systemaudio");
+        if (degradation.HasFlag(Degradation.NoMicrophone)) parts.Add(text.NoMicrophone);
+        if (degradation.HasFlag(Degradation.MicrophoneSilent)) parts.Add(text.MicrophoneSilent);
+        if (degradation.HasFlag(Degradation.NoSystemAudio)) parts.Add(text.NoSystemAudio);
         return parts.Count == 0 ? "" : $" ({string.Join(", ", parts)})";
     }
 }
