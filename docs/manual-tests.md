@@ -15,7 +15,7 @@ Nach jedem Test im Zweifel `%LOCALAPPDATA%\Oreja\oreja.log` ansehen.
 | 8 | Aufnahmeordner auf einen Ordner in Google Drive für Desktop ändern, aufnehmen | Datei erscheint vollständig in Google Drive, keine `.tmp`-Reste | ☐ |
 | 9 | Aufnahmeordner auf einen USB-Stick legen, Stick abziehen, aufnehmen, Stick anstecken, Oreja neu starten | Datei wird nachträglich auf den Stick verschoben | ☐ |
 | 10 | Zweimal schnell hintereinander auf das Icon klicken | Aufnahme startet und bleibt an | ☐ |
-| 11 | `Oreja.exe` ein zweites Mal starten | Kein zweites Icon | ☐ |
+| 11 | `Oreja.exe` ein zweites Mal starten, in der Meldung „Ja“ wählen | Kein zweites Icon; Meldung „Oreja läuft bereits.“ mit Info-Symbol und Ja/Nein; „Ja“ öffnet die Taskleisten-Einstellungen; Protokoll: „Zweiter Start: Oreja läuft bereits (Symbol bereit)“ | ☐ |
 | 12 | Menü „Mit Windows starten“ aus- und wieder einschalten, neu anmelden | Häkchen entspricht dem Verhalten beim Anmelden | ☐ |
 | 13 | Rechtsklick → „Abtastrate“ öffnen, „44,1 kHz“ wählen, Oreja beenden und neu starten | Einträge „16 kHz (Spracherkennung)“, „44,1 kHz“, „48 kHz (Hörclips)“; Häkchen vorher bei 16 kHz (Erststart), nach dem Neustart bei 44,1 kHz | ☐ |
 | 14 | „48 kHz (Hörclips)“ wählen, 1 Minute aufnehmen, `ffprobe datei.flac` | `48000 Hz, mono`; Protokoll: „Aufnahme gestartet: … (n Quellen, 48000 Hz)“ und „Aufnahme beendet: … (48000 Hz) …“ | ☐ |
@@ -27,3 +27,7 @@ Nach jedem Test im Zweifel `%LOCALAPPDATA%\Oreja\oreja.log` ansehen.
 | 20 | „English“ wählen, „Change recordings folder…“ öffnen | Dialogtitel „Choose recordings folder“ | ☐ |
 | 21 | Oreja beenden und neu starten | Menü weiterhin englisch, Häkchen bei „English“ | ☐ |
 | 22 | „Language“ → „Automatic (Windows)“ wählen | Menü und Tooltip sofort wieder deutsch, Häkchen bei „Automatisch (Windows)“; Protokoll: „Sprache geändert: automatisch“ | ☐ |
+| 23 | `Oreja.exe` ein zweites Mal starten, „Nein“ wählen | Meldung schließt sich, nichts wird geöffnet, weiterhin nur ein Icon | ☐ |
+| 24 | „Language“ → „English“ wählen, `Oreja.exe` ein zweites Mal starten | Meldung englisch („Oreja is already running.“ …), Protokollzeile weiterhin deutsch; danach „Language“ wieder auf „Automatic (Windows)“ | ☐ |
+| 25 | Oreja beenden, im Explorer `Oreja.exe` zweimal kurz hintereinander starten | Ein Icon; der zweite Start meldet „Oreja läuft bereits.“ (nicht „hängt der Start“) | ☐ |
+| 26 | Oreja beenden und neu starten, Protokoll ansehen | Nacheinander „Audio-Initialisierung …“, „Audio-Initialisierung fertig (… ms)“, „Tray-Icon bereit“ | ☐ |

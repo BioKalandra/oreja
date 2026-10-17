@@ -23,6 +23,12 @@ public sealed class UiTextTests
         { nameof(UiText.NoMicrophone), "ohne Mikrofon", "no microphone" },
         { nameof(UiText.MicrophoneSilent), "Mikrofon stumm/gesperrt", "microphone muted/blocked" },
         { nameof(UiText.NoSystemAudio), "ohne Systemaudio", "no system audio" },
+        { nameof(UiText.AlreadyRunning),
+            "Oreja läuft bereits.\n\nDas Symbol steckt eventuell im Überlaufbereich der Taskleiste (^). Dauerhaft einblenden lässt es sich unter Einstellungen → Personalisierung → Taskleiste → Andere Symbole der Taskleiste.\n\nTaskleisten-Einstellungen jetzt öffnen?",
+            "Oreja is already running.\n\nIts icon may be hidden in the taskbar overflow (^). To show it permanently, go to Settings → Personalization → Taskbar → Other system tray icons.\n\nOpen taskbar settings now?" },
+        { nameof(UiText.StartupStuck),
+            "Oreja läuft bereits, hat sein Symbol aber noch nicht angelegt – vermutlich hängt der Start.\n\nBeende Oreja im Task-Manager und starte es neu. Einzelheiten stehen im Protokoll.\n\nProtokoll jetzt öffnen?",
+            "Oreja is already running but has not created its icon yet – startup is probably stuck.\n\nEnd Oreja in Task Manager and start it again. Details are in the log.\n\nOpen the log now?" },
     };
 
     private static string Get(UiText text, string property) =>

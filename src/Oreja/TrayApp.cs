@@ -36,7 +36,9 @@ public sealed class TrayApp : ApplicationContext
     private bool _busy;
     private bool _exiting;
 
-    public TrayApp(Recorder recorder, Settings settings, Autostart autostart, OutputPaths paths, RecordingMover mover, Log log)
+    /// <param name="onReady">Läuft, sobald das Icon sichtbar ist (Bereitschaftssignal für einen zweiten Start).</param>
+    public TrayApp(Recorder recorder, Settings settings, Autostart autostart, OutputPaths paths, RecordingMover mover, Log log,
+        Action onReady)
     {
         _recorder = recorder;
         _settings = settings;
@@ -95,6 +97,8 @@ public sealed class TrayApp : ApplicationContext
 
         Render(_recorder.Status);
         _notifyIcon.Visible = true;
+        _log.Info("Tray-Icon bereit");
+        onReady();
         QueueMove(); // Reste nach Absturz oder nicht erreichbarem Zielordner
     }
 

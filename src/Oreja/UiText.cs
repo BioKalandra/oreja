@@ -26,6 +26,12 @@ public sealed class UiText
         NoMicrophone = "ohne Mikrofon",
         MicrophoneSilent = "Mikrofon stumm/gesperrt",
         NoSystemAudio = "ohne Systemaudio",
+        AlreadyRunning = "Oreja läuft bereits.\n\nDas Symbol steckt eventuell im Überlaufbereich der Taskleiste (^). "
+            + "Dauerhaft einblenden lässt es sich unter Einstellungen → Personalisierung → Taskleiste → Andere Symbole der Taskleiste.\n\n"
+            + "Taskleisten-Einstellungen jetzt öffnen?",
+        StartupStuck = "Oreja läuft bereits, hat sein Symbol aber noch nicht angelegt – vermutlich hängt der Start.\n\n"
+            + "Beende Oreja im Task-Manager und starte es neu. Einzelheiten stehen im Protokoll.\n\n"
+            + "Protokoll jetzt öffnen?",
         RecordingSince = "Oreja – Aufnahme seit",
         ErrorPrefix = "Oreja – Fehler:",
         WriteFailed = "Schreibfehler",
@@ -52,6 +58,12 @@ public sealed class UiText
         NoMicrophone = "no microphone",
         MicrophoneSilent = "microphone muted/blocked",
         NoSystemAudio = "no system audio",
+        AlreadyRunning = "Oreja is already running.\n\nIts icon may be hidden in the taskbar overflow (^). "
+            + "To show it permanently, go to Settings → Personalization → Taskbar → Other system tray icons.\n\n"
+            + "Open taskbar settings now?",
+        StartupStuck = "Oreja is already running but has not created its icon yet – startup is probably stuck.\n\n"
+            + "End Oreja in Task Manager and start it again. Details are in the log.\n\n"
+            + "Open the log now?",
         RecordingSince = "Oreja – recording since",
         ErrorPrefix = "Oreja – error:",
         WriteFailed = "write failed",
@@ -78,6 +90,8 @@ public sealed class UiText
     public required string NoMicrophone { get; init; }
     public required string MicrophoneSilent { get; init; }
     public required string NoSystemAudio { get; init; }
+    public required string AlreadyRunning { get; init; }
+    public required string StartupStuck { get; init; }
 
     // Sprachnamen stehen immer in der eigenen Sprache, damit man sie auch in der falschen Oberfläche findet.
     public string LanguageGerman => "Deutsch";
