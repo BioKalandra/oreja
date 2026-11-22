@@ -49,6 +49,10 @@ Aufnahmeordner verschoben (Voreinstellung `Dokumente\Oreja`). Protokoll: `%LOCAL
   fertig (… ms)“ und „Tray-Icon bereit“ zeigen, wie weit der Start gekommen ist. Folgt auf die letzte
   Zeile „Audio-Initialisierung …“ kein „fertig“ (höchstens „dauert ungewöhnlich lange“), hängt der
   Start beim Windows-Audiodienst.
+- **„FLAC-Encoder (libFLAC.dll) nicht ladbar“:** Oreja entpackt die mitgelieferte `libFLAC.dll` bei
+  der ersten Aufnahme nach dem Start nach `%LOCALAPPDATA%\Oreja\native\` und ersetzt sie dort, falls
+  sie fehlt oder beschädigt ist. Den Grund nennt das Protokoll. Eine `libFLAC.dll` neben `Oreja.exe`
+  hat Vorrang.
 
 ## Entwickeln
 

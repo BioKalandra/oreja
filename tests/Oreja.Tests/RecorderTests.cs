@@ -414,6 +414,33 @@ public sealed class RecorderTests : IDisposable
     }
 
     [Fact]
+    public void MissingEncoderLibraryIsReportedInsteadOfThrown()
+    {
+        MicAndSpeaker();
+        _sinkOverride = (_, _) => throw new DllNotFoundException("Dll was not found.");
+
+        _recorder.Start();
+
+        Assert.Equal(RecorderState.Error, _recorder.Status.State);
+        Assert.Equal(RecorderError.EncoderUnavailable, _recorder.Status.Error);
+        Assert.Equal(RecorderState.Error, Assert.Single(_statuses).State);
+        Assert.Empty(_backend.Created);
+        Assert.Empty(_finished);
+    }
+
+    [Fact]
+    public void UnexpectedSinkCreationFailureIsReportedAsInternalError()
+    {
+        MicAndSpeaker();
+        _sinkOverride = (_, _) => throw new InvalidOperationException("unerwartet");
+
+        _recorder.Start();
+
+        Assert.Equal(RecorderState.Error, _recorder.Status.State);
+        Assert.Equal(RecorderError.Internal, _recorder.Status.Error);
+    }
+
+    [Fact]
     public void DeviceEventsAfterStopAreIgnored()
     {
         _backend.DefaultCapture = "mic";

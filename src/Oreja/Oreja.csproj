@@ -18,8 +18,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <!-- Link legt die DLL direkt neben die Exe, wo die Laufzeit sie sucht (nicht in native\) -->
-    <None Update="native\libFLAC.dll" Link="libFLAC.dll" CopyToOutputDirectory="PreserveNewest" />
+    <!-- Build: Link legt die DLL direkt neben die Exe (nicht in native\), wo LibFlacLoader sie zuerst sucht.
+         Publish: keine lose DLL; die Exe trägt sie als Ressource und entpackt sie nach %LOCALAPPDATA%. -->
+    <None Update="native\libFLAC.dll" Link="libFLAC.dll" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="Never" />
+    <EmbeddedResource Include="native\libFLAC.dll" LogicalName="Oreja.native.libFLAC.dll" />
     <InternalsVisibleTo Include="Oreja.Tests" />
   </ItemGroup>
 

@@ -37,6 +37,7 @@ public sealed class UiText
         WriteFailed = "Schreibfehler",
         Internal = "Interner Fehler – siehe Protokoll",
         NoDevice = "Kein Audiogerät verfügbar",
+        EncoderUnavailable = "FLAC-Encoder (libFLAC.dll) nicht ladbar – siehe Protokoll",
         SpeechRecognition = "Spracherkennung",
         AudioClips = "Hörclips",
         Numbers = CultureInfo.GetCultureInfo("de-DE"),
@@ -69,6 +70,7 @@ public sealed class UiText
         WriteFailed = "write failed",
         Internal = "internal error – see log",
         NoDevice = "no audio device available",
+        EncoderUnavailable = "FLAC encoder (libFLAC.dll) could not be loaded – see log",
         SpeechRecognition = "speech recognition",
         AudioClips = "audio clips",
         Numbers = CultureInfo.InvariantCulture,
@@ -102,6 +104,7 @@ public sealed class UiText
     private string WriteFailed { get; init; } = "";
     private string Internal { get; init; } = "";
     private string NoDevice { get; init; } = "";
+    private string EncoderUnavailable { get; init; } = "";
     private string SpeechRecognition { get; init; } = "";
     private string AudioClips { get; init; } = "";
     private CultureInfo Numbers { get; init; } = CultureInfo.InvariantCulture;
@@ -125,6 +128,7 @@ public sealed class UiText
     {
         RecorderError.WriteFailed => WriteFailed,
         RecorderError.NoDevice => NoDevice,
+        RecorderError.EncoderUnavailable => EncoderUnavailable,
         _ => Internal,
     };
 

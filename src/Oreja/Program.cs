@@ -17,6 +17,8 @@ internal static class Program
         string appData = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Oreja");
         string logPath = Path.Combine(appData, "oreja.log");
         var log = new Log(logPath);
+        // Vor dem ersten libFLAC-Aufruf; geladen wird erst bei der ersten Aufnahme.
+        LibFlacLoader.Register(Path.Combine(appData, "native"), log);
 
         SingleInstance? acquired;
         try

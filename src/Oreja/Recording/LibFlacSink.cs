@@ -20,8 +20,29 @@ public sealed unsafe class LibFlacSink : IFlacSink
     private Exception? _ioError;
     private bool _completed;
 
-    public static LibFlacSink Create(string path, int sampleRate) =>
-        new(new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read), sampleRate);
+    /// <summary>Legt die Datei neu an; scheitert der Encoder (z. B. fehlende libFLAC.dll), wird sie wieder gelöscht.</summary>
+    public static LibFlacSink Create(string path, int sampleRate)
+    {
+        var stream = new FileStream(path, FileMode.CreateNew, FileAccess.ReadWrite, FileShare.Read);
+        try
+        {
+            return new LibFlacSink(stream, sampleRate);
+        }
+        catch
+        {
+            // Der Konstruktor hat den Stream schon geschlossen; die Datei stammt von uns (CreateNew).
+            stream.Dispose();
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+            {
+                // Die ursprüngliche Ausnahme ist wichtiger; die leere Datei verschiebt höchstens der Mover.
+            }
+            throw;
+        }
+    }
 
     public LibFlacSink(Stream stream, int sampleRate)
     {

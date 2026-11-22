@@ -66,6 +66,29 @@ public sealed class LibFlacSinkTests : IDisposable
     }
 
     [Fact]
+    public void CreateKeepsTheExistingFileWhenRefusing()
+    {
+        var path = Path.Combine(_dir.FullName, "exists-kept.flac");
+        File.WriteAllText(path, "x");
+
+        Assert.Throws<IOException>(() => LibFlacSink.Create(path, 16000));
+
+        Assert.Equal("x", File.ReadAllText(path));
+    }
+
+    [Fact]
+    public void FailedEncoderSetupLeavesNoEmptyFile()
+    {
+        var path = Path.Combine(_dir.FullName, "invalid-rate.flac");
+
+        // Eine Abtastrate über dem FLAC-Maximum (1 048 575 Hz) lässt FLAC__stream_encoder_init_stream scheitern –
+        // wie eine fehlende DLL erst nach dem Öffnen der Datei.
+        Assert.Throws<IOException>(() => LibFlacSink.Create(path, int.MaxValue));
+
+        Assert.False(File.Exists(path));
+    }
+
+    [Fact]
     public void WriteFailureSurfacesAsIOException()
     {
         var sink = new LibFlacSink(new FailingStream(failAfterBytes: 4000), 16000);
