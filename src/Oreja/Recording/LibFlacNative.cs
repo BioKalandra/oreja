@@ -5,7 +5,7 @@ namespace Oreja.Recording;
 /// <summary>P/Invoke-Deklarationen für libFLAC 1.5.0 (native/libFLAC.dll, BSD-3-Clause).</summary>
 internal static unsafe class LibFlacNative
 {
-    private const string Lib = "libFLAC";
+    public const string Lib = "libFLAC";
 
     [DllImport(Lib)] public static extern IntPtr FLAC__stream_encoder_new();
     [DllImport(Lib)] public static extern void FLAC__stream_encoder_delete(IntPtr encoder);

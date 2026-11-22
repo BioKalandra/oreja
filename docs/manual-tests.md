@@ -31,3 +31,5 @@ Nach jedem Test im Zweifel `%LOCALAPPDATA%\Oreja\oreja.log` ansehen.
 | 24 | „Language“ → „English“ wählen, `Oreja.exe` ein zweites Mal starten | Meldung englisch („Oreja is already running.“ …), Protokollzeile weiterhin deutsch; danach „Language“ wieder auf „Automatic (Windows)“ | ☐ |
 | 25 | Oreja beenden, im Explorer `Oreja.exe` zweimal kurz hintereinander starten | Ein Icon; der zweite Start meldet „Oreja läuft bereits.“ (nicht „hängt der Start“) | ☐ |
 | 26 | Oreja beenden und neu starten, Protokoll ansehen | Nacheinander „Audio-Initialisierung …“, „Audio-Initialisierung fertig (… ms)“, „Tray-Icon bereit“ | ☐ |
+| 27 | Oreja beenden, eine eventuell neben `Oreja.exe` liegende `libFLAC.dll` entfernen, Oreja starten und eine kurze Aufnahme machen | Aufnahme gelingt; Protokoll: „libFLAC geladen: …\Oreja\native\<Hash>\libFLAC.dll“; unter `%TEMP%\.net\Oreja` entsteht nichts | ☐ |
+| 28 | Oreja beenden, `%LOCALAPPDATA%\Oreja\native\<Hash>\libFLAC.dll` löschen (Ordner bleibt), Oreja starten, aufnehmen | Aufnahme gelingt, die DLL liegt wieder im Ordner | ☐ |

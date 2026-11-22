@@ -12,7 +12,7 @@ public enum Degradation
 }
 
 /// <summary>Grund eines Fehlerzustands; den Text dazu liefert die Oberfläche.</summary>
-public enum RecorderError { WriteFailed, Internal, NoDevice }
+public enum RecorderError { WriteFailed, Internal, NoDevice, EncoderUnavailable }
 
 public sealed record RecorderStatus(
     RecorderState State,

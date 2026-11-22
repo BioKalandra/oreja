@@ -70,6 +70,8 @@ public sealed class UiTextTests
     [InlineData(RecorderError.WriteFailed, "Schreibfehler", "write failed")]
     [InlineData(RecorderError.Internal, "Interner Fehler – siehe Protokoll", "internal error – see log")]
     [InlineData(RecorderError.NoDevice, "Kein Audiogerät verfügbar", "no audio device available")]
+    [InlineData(RecorderError.EncoderUnavailable, "FLAC-Encoder (libFLAC.dll) nicht ladbar – siehe Protokoll",
+        "FLAC encoder (libFLAC.dll) could not be loaded – see log")]
     public void ErrorReasonIsTranslated(RecorderError error, string german, string english)
     {
         Assert.Equal(german, UiText.German.ErrorReason(error));

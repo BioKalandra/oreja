@@ -99,10 +99,11 @@ public sealed class Recorder : IDisposable
             path = _paths.NewRecordingPath(startedAt);
             sink = _createSink(path, sampleRate);
         }
-        catch (Exception ex) when (ex is IOException or UnauthorizedAccessException)
+        catch (Exception ex)
         {
+            // Auch Nicht-IO-Fehler (z. B. DllNotFoundException) landen als Fehlerzustand im Tray, statt aus Start() zu entkommen.
             _log.Error("Aufnahmedatei konnte nicht angelegt werden", ex);
-            return new RecorderStatus(RecorderState.Error, Error: RecorderError.WriteFailed);
+            return new RecorderStatus(RecorderState.Error, Error: ErrorFor(ex));
         }
 
         var mixer = new AudioMixer(_clock, sampleRate, sink.Write,
@@ -349,14 +350,19 @@ public sealed class Recorder : IDisposable
         return degradation;
     }
 
-    private static RecorderError ErrorFor(Exception ex) =>
-        ex is IOException or UnauthorizedAccessException ? RecorderError.WriteFailed : RecorderError.Internal;
+    private static RecorderError ErrorFor(Exception ex) => ex switch
+    {
+        IOException or UnauthorizedAccessException => RecorderError.WriteFailed,
+        DllNotFoundException or EntryPointNotFoundException or BadImageFormatException => RecorderError.EncoderUnavailable,
+        _ => RecorderError.Internal,
+    };
 
     /// <summary>Fehlergrund fürs Protokoll; das Protokoll bleibt unabhängig von der Oberflächensprache deutsch.</summary>
     private static string LogText(RecorderError error) => error switch
     {
         RecorderError.WriteFailed => "Schreibfehler",
         RecorderError.NoDevice => "Kein Audiogerät verfügbar",
+        RecorderError.EncoderUnavailable => "FLAC-Encoder nicht verfügbar",
         _ => "Interner Fehler – siehe Protokoll",
     };
 
